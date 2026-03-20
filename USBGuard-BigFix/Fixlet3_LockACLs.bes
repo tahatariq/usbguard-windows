@@ -1,0 +1,91 @@
+; ============================================================================
+; USBGuard - BigFix Fixlet 3: Lock Registry ACLs (v4 — incl. WPD keys)
+; ============================================================================
+; Fixlet Name:   USBGuard - Lock Registry Keys Against User Tampering
+; Description:   Applies DENY ACEs (SetValue, CreateSubKey, Delete) to all
+;                USBGuard-managed registry keys for Users and Interactive.
+;                DENY overrides ALLOW — even local Administrators cannot
+;                modify these keys. Only SYSTEM (BigFix) can via Fixlet 4.
+;
+;                Keys protected (v4 additions marked *):
+;                  USBSTOR service
+;                  StorageDevicePolicies
+;                  DeviceInstall\Restrictions (+ DenyDeviceClasses subkey)
+;                  Policies\Explorer (AutoPlay)
+;                  Policies\Windows\Explorer
+;                  WpdFilesystemDriver *
+;                  WUDFRd *
+;                  WpdUpFltr *
+;                  USBGuard config + SavedStart *
+;                  ProgramData\USBGuard folder
+;
+; Run As:        LocalSystem
+; Idempotent:    Yes
+; ============================================================================
+
+action uses wow64 redirection false
+
+waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command ^
+"$ErrorActionPreference = 'Continue';" ^
+"" ^
+"function Protect-RegKey {" ^
+"  param([Microsoft.Win32.RegistryKey]$Hive, [string]$SubKey)" ^
+"  try {" ^
+"    $key = $Hive.OpenSubKey($SubKey," ^
+"      [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree," ^
+"      [System.Security.AccessControl.RegistryRights]::ChangePermissions);" ^
+"    if (-not $key) { Write-Host \"SKIP (not found): $SubKey\"; return };" ^
+"    $acl = $key.GetAccessControl();" ^
+"    $acl.SetAccessRuleProtection($false, $true);" ^
+"    $dR  = [Microsoft.Win32.RegistryRights]'SetValue,CreateSubKey,Delete';" ^
+"    $inh = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit';" ^
+"    $prp = [System.Security.AccessControl.PropagationFlags]::None;" ^
+"    $dny = [System.Security.AccessControl.AccessControlType]::Deny;" ^
+"    foreach ($sid in @('BUILTIN\\Users','NT AUTHORITY\\Interactive')) {" ^
+"      $acl.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule($sid,$dR,$inh,$prp,$dny)))" ^
+"    };" ^
+"    $key.SetAccessControl($acl); $key.Close();" ^
+"    Write-Host \"Protected: $SubKey\"" ^
+"  } catch { Write-Host \"Error: $SubKey : $_\" }" ^
+"}" ^
+"" ^
+"$H = [Microsoft.Win32.Registry]::LocalMachine;" ^
+"" ^
+"# Storage / AutoPlay keys" ^
+"Protect-RegKey $H 'SYSTEM\CurrentControlSet\Services\USBSTOR';" ^
+"Protect-RegKey $H 'SYSTEM\CurrentControlSet\Control\StorageDevicePolicies';" ^
+"Protect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions';" ^
+"Protect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions\DenyDeviceClasses';" ^
+"Protect-RegKey $H 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer';" ^
+"Protect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\Explorer';" ^
+"" ^
+"# WPD / MTP / PTP keys (L7)" ^
+"Protect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver';" ^
+"Protect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WUDFRd';" ^
+"Protect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WpdUpFltr';" ^
+"" ^
+"# USBGuard config key (stores company name, saved Start values)" ^
+"Protect-RegKey $H 'SOFTWARE\USBGuard';" ^
+"" ^
+"# Lock ProgramData\USBGuard folder" ^
+"$dir = [System.Environment]::GetFolderPath('CommonApplicationData') + '\USBGuard';" ^
+"if (Test-Path $dir) {" ^
+"  $acl = Get-Acl $dir;" ^
+"  $acl.SetAccessRuleProtection($true, $false);" ^
+"  $fc  = [System.Security.AccessControl.FileSystemRights]::FullControl;" ^
+"  $rx  = [System.Security.AccessControl.FileSystemRights]'ReadAndExecute,ListDirectory,Read';" ^
+"  $dw  = [System.Security.AccessControl.FileSystemRights]'Write,Delete,DeleteSubdirectoriesAndFiles,ChangePermissions,TakeOwnership';" ^
+"  $ci  = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit';" ^
+"  $non = [System.Security.AccessControl.PropagationFlags]::None;" ^
+"  $al  = [System.Security.AccessControl.AccessControlType]::Allow;" ^
+"  $dn  = [System.Security.AccessControl.AccessControlType]::Deny;" ^
+"  $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null };" ^
+"  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule('NT AUTHORITY\SYSTEM',  $fc, $ci, $non, $al)));" ^
+"  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators',$fc,$ci,$non,$al)));" ^
+"  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\Users', $rx,  $ci, $non, $al)));" ^
+"  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\Users', $dw,  $ci, $non, $dn)));" ^
+"  Set-Acl $dir $acl;" ^
+"  Write-Host 'ProgramData\USBGuard folder locked'" ^
+"};" ^
+"" ^
+"Write-Host 'USBGuard: All registry + file ACL protection applied (v4)'"

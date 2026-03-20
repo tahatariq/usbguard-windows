@@ -1,0 +1,106 @@
+; ============================================================================
+; USBGuard - BigFix Fixlet 2: Deploy VolumeWatcher Scheduled Task
+; ============================================================================
+; Fixlet Name:   USBGuard - Install Volume Auto-Eject Watcher
+; Description:   Deploys the VolumeWatcher.ps1 script to ProgramData\USBGuard
+;                and registers it as a SYSTEM scheduled task that auto-starts
+;                on boot. Fires within 1 second of a removable volume mount
+;                and force-dismounts it before the user can access files.
+;
+;                NOTE: Notification removed for BigFix deployment.
+;                      Registry protection (Fixlet 3) makes it tamper-proof.
+;
+; Run As:        LocalSystem
+; Depends on:    Fixlet 1 (policy applied first)
+; Idempotent:    Yes
+; ============================================================================
+
+; ── RELEVANCE ─────────────────────────────────────────────────────────────────
+;
+; NOT exists task "USBGuard_VolumeWatcher" of task scheduler of operating system
+; OR NOT exists file (pathname of (system wow64 folder) & "\..\..\ProgramData\USBGuard\VolumeWatcher.ps1")
+;
+; ─────────────────────────────────────────────────────────────────────────────
+
+action uses wow64 redirection false
+
+; Step 1: Create the USBGuard directory
+folder create "{pathname of common application data folder}\USBGuard"
+
+; Step 2: Write VolumeWatcher.ps1
+; BigFix createfile writes a temp file then we move it into place
+delete __createfile
+createfile until WATCHER_EOF
+# USBGuard VolumeWatcher - SYSTEM Scheduled Task (BigFix deployment)
+# No notification in this version - registry is protected by BigFix ACL fixlet.
+# Silently force-dismounts any removable volume within 1 second of plug-in.
+$logFile = "$env:ProgramData\USBGuard\watcher.log"
+
+function Log {
+    param([string]$m)
+    "[$( (Get-Date -Format 'HH:mm:ss') )] $m" |
+        Add-Content $logFile -Encoding UTF8 -ErrorAction SilentlyContinue
+}
+
+function Dismount-Volume {
+    param([string]$DriveLetter, [string]$Label)
+    try {
+        $vol = Get-WmiObject -Query "SELECT * FROM Win32_Volume WHERE DriveLetter = '${DriveLetter}:'" -EA Stop
+        if ($vol) {
+            $r = $vol.Dismount($true, $false)
+            if ($r.ReturnValue -eq 0) { Log "Dismounted: $DriveLetter ($Label)"; return }
+            Log "Dismount code=$($r.ReturnValue) for $DriveLetter"
+        }
+    } catch { Log "WMI dismount error ${DriveLetter}: $_" }
+    try {
+        $sh = New-Object -ComObject Shell.Application
+        $sh.Namespace(17).ParseName("${DriveLetter}:").InvokeVerb("Eject")
+        Log "Shell eject sent: $DriveLetter"
+    } catch { Log "Shell eject failed ${DriveLetter}: $_" }
+}
+
+Log "VolumeWatcher started (PID $PID)"
+
+$wql = "SELECT * FROM __InstanceCreationEvent WITHIN 1 " +
+       "WHERE TargetInstance ISA 'Win32_Volume' AND TargetInstance.DriveType = 2"
+try {
+    Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA Stop
+    Log "WMI subscription active"
+} catch {
+    Log "FATAL: WMI registration failed: $_"
+    exit 1
+}
+
+while ($true) {
+    $e = Wait-Event -SourceIdentifier "USBGuardVol" -Timeout 60
+    if ($e) {
+        try {
+            $vol   = $e.SourceEventArgs.NewEvent.TargetInstance
+            $dl    = $vol.DriveLetter
+            $label = $vol.Label
+            Log "New removable volume: $dl label='$label'"
+            Start-Sleep -Milliseconds 500
+            Dismount-Volume -DriveLetter $dl -Label $label
+        } catch { Log "Event error: $_" }
+        Remove-Event      -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
+        Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
+    }
+    Log "Watcher alive"
+}
+WATCHER_EOF
+
+delete "{pathname of common application data folder}\USBGuard\VolumeWatcher.ps1"
+move __createfile "{pathname of common application data folder}\USBGuard\VolumeWatcher.ps1"
+
+; Step 3: Register and start the Scheduled Task via PowerShell
+waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command ^
+"$scriptPath = '$env:ProgramData\USBGuard\VolumeWatcher.ps1';" ^
+"$psArgs = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + $scriptPath + '\"';" ^
+"$action   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs;" ^
+"$trigger  = New-ScheduledTaskTrigger -AtStartup;" ^
+"$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 0) -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -MultipleInstances IgnoreNew;" ^
+"$principal= New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;" ^
+"Unregister-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -Confirm:$false -EA SilentlyContinue;" ^
+"Register-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'USBGuard: auto-ejects removable storage' -Force | Out-Null;" ^
+"Start-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -EA SilentlyContinue;" ^
+"Write-Host 'VolumeWatcher task registered and started'"

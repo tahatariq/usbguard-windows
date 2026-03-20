@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>USBGuard</title>
+<HTA:APPLICATION
+  ID="USBGuard"
+  APPLICATIONNAME="USBGuard"
+  SCROLL="no"
+  SINGLEINSTANCE="yes"
+  WINDOWSTATE="normal"
+  MINIMIZEBUTTON="yes"
+  MAXIMIZEBUTTON="no"
+  INNERBORDER="no"
+  SELECTION="no"
+  CONTEXTMENU="no"
+  CAPTION="yes"
+/>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #0a0c10;
+    --panel:     #0f1318;
+    --border:    #1e2530;
+    --accent:    #00d4ff;
+    --danger:    #ff3e3e;
+    --safe:      #00ff99;
+    --warn:      #ffaa00;
+    --text:      #c8d6e5;
+    --dim:       #4a5568;
+    --glow-blue: 0 0 20px rgba(0,212,255,0.3);
+    --glow-red:  0 0 20px rgba(255,62,62,0.3);
+    --glow-grn:  0 0 20px rgba(0,255,153,0.3);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+  }
+
+  /* Scan line overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 0;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(90deg, #0d1117 0%, #111820 50%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.6;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    position: relative;
+  }
+
+  .logo-icon svg { width: 100%; height: 100%; }
+
+  .logo-text {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: #fff;
+    text-transform: uppercase;
+  }
+
+  .logo-text span {
+    color: var(--accent);
+    text-shadow: var(--glow-blue);
+  }
+
+  .logo-sub {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-top: 2px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .admin-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--safe);
+    background: rgba(0,255,153,0.08);
+    border: 1px solid rgba(0,255,153,0.25);
+    padding: 4px 10px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+
+  .admin-badge.no-admin {
+    color: var(--danger);
+    background: rgba(255,62,62,0.08);
+    border-color: rgba(255,62,62,0.25);
+  }
+
+  .btn-close {
+    width: 28px; height: 28px;
+    background: rgba(255,62,62,0.1);
+    border: 1px solid rgba(255,62,62,0.3);
+    color: var(--danger);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    border-radius: 2px;
+    transition: all 0.2s;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .btn-close:hover {
+    background: rgba(255,62,62,0.25);
+    box-shadow: var(--glow-red);
+  }
+
+  /* ── Main Content ── */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 24px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  /* ── Status Overview ── */
+  .status-bar {
+    display: flex;
+    gap: 8px;
+  }
+
+  .status-card {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .status-card.blocked {
+    border-color: rgba(255,62,62,0.35);
+    background: rgba(255,62,62,0.04);
+  }
+  .status-card.blocked::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--danger);
+    box-shadow: var(--glow-red);
+  }
+
+  .status-card.allowed {
+    border-color: rgba(0,255,153,0.25);
+    background: rgba(0,255,153,0.03);
+  }
+  .status-card.allowed::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--safe);
+    box-shadow: var(--glow-grn);
+  }
+
+  .status-card.unknown { border-color: rgba(255,170,0,0.3); }
+
+  .sc-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+    margin-bottom: 6px;
+  }
+
+  .sc-value {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .status-card.blocked .sc-value { color: var(--danger); }
+  .status-card.allowed .sc-value { color: var(--safe); }
+  .status-card.unknown .sc-value { color: var(--warn); }
+
+  .sc-icon {
+    position: absolute;
+    right: 14px; top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.15;
+    font-size: 32px;
+  }
+
+  /* ── Control Panels ── */
+  .control-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .control-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px;
+  }
+
+  .cp-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cp-icon {
+    width: 32px; height: 32px;
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .cp-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #e2e8f0;
+  }
+
+  .cp-desc {
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 1px;
+    margin-top: 2px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .cp-scope {
+    margin-bottom: 14px;
+  }
+
+  .scope-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 1px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    margin: 2px 3px 2px 0;
+    background: rgba(0,212,255,0.06);
+    border: 1px solid rgba(0,212,255,0.15);
+    color: rgba(0,212,255,0.8);
+  }
+
+  .scope-tag.excluded {
+    background: rgba(74,85,104,0.3);
+    border-color: rgba(74,85,104,0.5);
+    color: var(--dim);
+    text-decoration: line-through;
+  }
+
+  .cp-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .btn:active::after { opacity: 0.08; }
+
+  .btn-block {
+    background: rgba(255,62,62,0.1);
+    border-color: rgba(255,62,62,0.4);
+    color: var(--danger);
+  }
+  .btn-block:hover {
+    background: rgba(255,62,62,0.2);
+    box-shadow: var(--glow-red);
+    border-color: var(--danger);
+  }
+  .btn-block:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-unblock {
+    background: rgba(0,255,153,0.07);
+    border-color: rgba(0,255,153,0.3);
+    color: var(--safe);
+  }
+  .btn-unblock:hover {
+    background: rgba(0,255,153,0.15);
+    box-shadow: var(--glow-grn);
+    border-color: var(--safe);
+  }
+  .btn-unblock:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* ── Master Control ── */
+  .master-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .master-panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent);
+  }
+
+  .master-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .master-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  .master-sub {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .master-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn-master-block {
+    padding: 11px 24px;
+    background: rgba(255,62,62,0.12);
+    border: 1px solid rgba(255,62,62,0.5);
+    color: var(--danger);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.2s;
+  }
+  .btn-master-block:hover {
+    background: rgba(255,62,62,0.25);
+    box-shadow: 0 0 25px rgba(255,62,62,0.4);
+  }
+
+  .btn-master-unblock {
+    padding: 11px 24px;
+    background: rgba(0,255,153,0.08);
+    border: 1px solid rgba(0,255,153,0.4);
+    color: var(--safe);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.2s;
+  }
+  .btn-master-unblock:hover {
+    background: rgba(0,255,153,0.18);
+    box-shadow: 0 0 25px rgba(0,255,153,0.35);
+  }
+
+  /* ── Log Panel ── */
+  .log-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    flex: 1;
+    min-height: 120px;
+    max-height: 160px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .log-header {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .log-title {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .btn-clear {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-family: 'Share Tech Mono', monospace;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  .btn-clear:hover { color: var(--text); border-color: var(--dim); }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-entry { margin-bottom: 2px; }
+  .log-entry .ts { color: var(--dim); }
+  .log-entry .msg { color: var(--text); }
+  .log-entry.success .msg { color: var(--safe); }
+  .log-entry.error .msg { color: var(--danger); }
+  .log-entry.warn .msg { color: var(--warn); }
+  .log-entry.info .msg { color: var(--accent); }
+
+  /* ── Loading overlay ── */
+  .loading {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(10,12,16,0.85);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .loading.active { display: flex; }
+
+  .spinner {
+    width: 40px; height: 40px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  /* ── Refresh btn ── */
+  .btn-refresh {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-family: 'Share Tech Mono', monospace;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  .btn-refresh:hover { color: var(--accent); border-color: rgba(0,212,255,0.4); }
+
+  /* Pulse animation for blocked state */
+  @keyframes pulse-red {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .pulsing { animation: pulse-red 2s ease-in-out infinite; }
+
+  /* ── Notification Panel ── */
+  .notify-panel {
+    background: var(--panel);
+    border: 1px solid rgba(255,170,0,0.2);
+    border-radius: 4px;
+    padding: 14px 18px;
+  }
+  .np-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .np-left { display: flex; align-items: center; gap: 10px; }
+  .np-fields { display: flex; gap: 10px; margin-bottom: 10px; }
+  .np-field { display: flex; flex-direction: column; gap: 4px; flex: 0 0 180px; }
+  .np-field-wide { flex: 1; }
+  .np-label {
+    font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--dim); font-family: "Share Tech Mono", monospace;
+  }
+  .np-input, .np-textarea {
+    background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    color: var(--text); font-family: "Rajdhani", sans-serif; font-size: 13px;
+    padding: 6px 10px; border-radius: 3px; outline: none; resize: none; width: 100%;
+  }
+  .np-input:focus, .np-textarea:focus { border-color: rgba(255,170,0,0.4); }
+  .np-textarea { height: 46px; line-height: 1.4; }
+  .btn-save-notify {
+    padding: 7px 16px; background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.35);
+    color: var(--warn); font-family: "Rajdhani", sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; cursor: pointer; border-radius: 3px; transition: all 0.2s;
+  }
+  .btn-save-notify:hover { background: rgba(255,170,0,0.2); box-shadow: 0 0 15px rgba(255,170,0,0.25); }
+  .np-preview {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px 14px;
+  }
+  .np-preview-icon { font-size: 18px; margin-top: 1px; }
+  .np-preview-body { flex: 1; }
+  .np-preview-title { font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 2px; letter-spacing: 0.5px; }
+  .np-preview-msg   { font-size: 11px; color: var(--dim); line-height: 1.4; font-family: "Share Tech Mono", monospace; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 36 36" fill="none">
+          <rect x="1" y="1" width="34" height="34" rx="3" stroke="#00d4ff" stroke-width="1.5" opacity="0.4"/>
+          <rect x="6" y="10" width="24" height="16" rx="2" stroke="#00d4ff" stroke-width="1.5"/>
+          <rect x="10" y="14" width="4" height="8" rx="1" fill="#00d4ff" opacity="0.7"/>
+          <rect x="16" y="14" width="4" height="8" rx="1" fill="#00d4ff" opacity="0.5"/>
+          <rect x="22" y="14" width="4" height="8" rx="1" fill="#00d4ff" opacity="0.3"/>
+          <line x1="18" y1="26" x2="18" y2="30" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+          <line x1="12" y1="30" x2="24" y2="30" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">USB<span>Guard</span></div>
+        <div class="logo-sub">Device Access Control</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn-refresh" onclick="refreshStatus()">⟳ Refresh</button>
+      <div id="adminBadge" class="admin-badge">● Checking...</div>
+      <button class="btn-close" onclick="window.close()">✕</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Status Cards -->
+    <div class="status-bar">
+      <div class="status-card unknown" id="card-storage">
+        <div class="sc-label">USBSTOR Driver</div>
+        <div class="sc-value" id="val-storage">Checking...</div>
+        <div class="sc-icon">💾</div>
+      </div>
+      <div class="status-card unknown" id="card-writeprotect">
+        <div class="sc-label">Write Protect</div>
+        <div class="sc-value" id="val-writeprotect">Checking...</div>
+        <div class="sc-icon">🔒</div>
+      </div>
+      <div class="status-card unknown" id="card-autoplay">
+        <div class="sc-label">AutoPlay / Popup</div>
+        <div class="sc-value" id="val-autoplay">Checking...</div>
+        <div class="sc-icon">🪟</div>
+      </div>
+      <div class="status-card unknown" id="card-watcher">
+        <div class="sc-label">Volume Watcher</div>
+        <div class="sc-value" id="val-watcher">Checking...</div>
+        <div class="sc-icon">👁</div>
+      </div>
+      <div class="status-card unknown" id="card-printers">
+        <div class="sc-label">USB Printers</div>
+        <div class="sc-value" id="val-printers">Checking...</div>
+        <div class="sc-icon">🖨</div>
+      </div>
+    </div>
+
+    <!-- Individual Controls -->
+    <div class="control-grid">
+
+      <!-- USB Storage Panel -->
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">💾</div>
+          <div>
+            <div class="cp-title">Mass Storage</div>
+            <div class="cp-desc">USBSTOR + Thunderbolt drivers</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">USB 2.0/3.x Drives</span>
+          <span class="scope-tag">USB-C Storage</span>
+          <span class="scope-tag">Thunderbolt Drives</span>
+          <span class="scope-tag">Write-Blocked</span>
+          <span class="scope-tag">Auto-Ejected</span>
+          <span class="scope-tag">No Popup</span>
+          <span class="scope-tag excluded">Keyboards / Mice</span>
+          <span class="scope-tag excluded">USB Audio</span>
+          <span class="scope-tag excluded">Internal Drives</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block" id="btn-block-storage" onclick="runAction('block-storage')">⊘ Block</button>
+          <button class="btn btn-unblock" id="btn-unblock-storage" onclick="runAction('unblock-storage')">✓ Allow</button>
+        </div>
+      </div>
+
+      <!-- USB Printers Panel -->
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">🖨</div>
+          <div>
+            <div class="cp-title">USB Printers</div>
+            <div class="cp-desc">Device class policy enforcement</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">USB Printers</span>
+          <span class="scope-tag">USB 2.0 Print</span>
+          <span class="scope-tag">USB 3.0 Print</span>
+          <span class="scope-tag">New Installs</span>
+          <span class="scope-tag excluded">Network Printers</span>
+          <span class="scope-tag excluded">PDF/Virtual</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block" id="btn-block-printers" onclick="runAction('block-printers')">⊘ Block</button>
+          <button class="btn btn-unblock" id="btn-unblock-printers" onclick="runAction('unblock-printers')">✓ Allow</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Master Control -->
+    <div class="master-panel">
+      <div class="master-label">
+        <div class="master-title">Master Control</div>
+        <div class="master-sub">Apply to all devices simultaneously</div>
+      </div>
+      <div class="master-actions">
+        <button class="btn-master-block" onclick="runAction('block')">⊘ Block All</button>
+        <button class="btn-master-unblock" onclick="runAction('unblock')">✓ Allow All</button>
+      </div>
+    </div>
+
+
+    <!-- Notification Config -->
+    <div class="notify-panel">
+      <div class="np-header">
+        <div class="np-left">
+          <div class="cp-icon" style="background:rgba(255,170,0,0.08);border-color:rgba(255,170,0,0.2);">&#128276;</div>
+          <div>
+            <div class="cp-title">User Notification</div>
+            <div class="cp-desc">Toast shown when USB drive is plugged in</div>
+          </div>
+        </div>
+        <button class="btn-save-notify" id="btnSaveNotify" onclick="saveNotifyConfig()">&#128190; Save</button>
+      </div>
+      <div class="np-fields">
+        <div class="np-field">
+          <label class="np-label">Company / Team Name</label>
+          <input class="np-input" id="inputCompany" type="text" value="IT Security" maxlength="60" placeholder="e.g. Acme IT Security"/>
+        </div>
+        <div class="np-field np-field-wide">
+          <label class="np-label">Message <span style="color:var(--dim);font-size:9px">(use {COMPANY} for the name above)</span></label>
+          <textarea class="np-textarea" id="inputMessage" rows="2">USB mass storage access is disabled by {COMPANY} policy. USB charging is unaffected. Contact IT support if you need access.</textarea>
+        </div>
+      </div>
+      <div class="np-preview">
+        <div class="np-preview-icon">&#128276;</div>
+        <div class="np-preview-body">
+          <div class="np-preview-title">USB Storage Blocked</div>
+          <div class="np-preview-msg" id="previewMsg">Preview updates as you type...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-panel">
+      <div class="log-header">
+        <span class="log-title">■ Activity Log</span>
+        <button class="btn-clear" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="log-entry info"><span class="ts">[--:--:--] </span><span class="msg">USBGuard initialized. Checking system status...</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Applying Changes...</div>
+</div>
+
+<script language="VBScript">
+' VBScript shell runner for HTA
+Function RunPS(psArgs)
+    Dim shell, result, tmpOut
+    Set shell = CreateObject("WScript.Shell")
+    tmpOut = shell.ExpandEnvironmentStrings("%TEMP%") & "\usbguard_out.txt"
+    
+    Dim psPath
+    psPath = Replace(document.location.pathname, "/", "\")
+    psPath = Left(psPath, InStrRev(psPath, "\")) & "USBGuard.ps1"
+    ' Remove leading backslash if present
+    If Left(psPath, 1) = "\" Then psPath = Mid(psPath, 2)
+    
+    Dim cmd
+    cmd = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File """ & psPath & """ " & psArgs & " -OutputFile """ & tmpOut & """"
+    
+    result = shell.Run(cmd, 0, True)
+    
+    Dim fso, f, content
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    content = ""
+    If fso.FileExists(tmpOut) Then
+        Set f = fso.OpenTextFile(tmpOut, 1)
+        content = f.ReadAll()
+        f.Close
+        fso.DeleteFile tmpOut
+    End If
+    
+    RunPS = content
+End Function
+
+Function CheckAdmin()
+    Dim shell, result
+    Set shell = CreateObject("WScript.Shell")
+    result = shell.Run("net session", 0, True)
+    CheckAdmin = (result = 0)
+End Function
+
+Sub RunAction_VBS(action)
+    Dim output
+    output = RunPS("-Action " & action)
+    window.external.RunCallback output, action
+End Sub
+
+Sub GetStatus_VBS()
+    Dim output
+    output = RunPS("-Action status")
+    window.external.StatusCallback output
+End Sub
+</script>
+
+<script language="JavaScript">
+var isAdmin = false;
+var currentStatus = { UsbStorage: 'unknown', Thunderbolt: 'unknown', UsbPrinters: 'unknown' };
+
+window.onload = function() {
+  checkAdminAndStatus();
+};
+
+function checkAdminAndStatus() {
+  try {
+    isAdmin = CheckAdmin();
+    var badge = document.getElementById('adminBadge');
+    if (isAdmin) {
+      badge.textContent = '● Administrator';
+      badge.className = 'admin-badge';
+    } else {
+      badge.textContent = '⚠ Not Admin';
+      badge.className = 'admin-badge no-admin';
+      addLog('WARNING: Not running as Administrator. Operations will fail.', 'error');
+    }
+  } catch(e) {}
+  refreshStatus();
+};
+
+function refreshStatus() {
+  addLog('Querying system status...', 'info');
+  try {
+    var output = RunPS('-Action status');
+    parseStatus(output);
+  } catch(e) {
+    addLog('Status check failed: ' + e.message, 'error');
+  }
+}
+
+function parseStatus(output) {
+  try {
+    var jsonMatch = output.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      var status = eval('(' + jsonMatch[0] + ')');
+      currentStatus = status;
+      updateStatusUI(status);
+    }
+  } catch(e) {
+    addLog('Could not parse status output', 'warn');
+  }
+}
+
+function updateStatusUI(status) {
+  updateCard('card-storage',     'val-storage',     status.UsbStorage     || 'unknown');
+
+  // WriteProtect: "active" = good (blocked), "inactive" = open
+  var wpState = (status.WriteProtect === 'active') ? 'blocked' : (status.WriteProtect === 'inactive' ? 'allowed' : 'unknown');
+  updateCard('card-writeprotect','val-writeprotect', wpState, {active:'ACTIVE', inactive:'INACTIVE'});
+
+  // AutoPlay: "disabled" = good (blocked state)
+  var apState = (status.AutoPlayKilled === 'disabled') ? 'blocked' : 'allowed';
+  updateCard('card-autoplay',    'val-autoplay',    apState, {disabled:'KILLED', enabled:'LIVE'});
+
+  // VolumeWatcher: "running" = blocked/protected
+  var vwState = (status.VolumeWatcher === 'running' || status.VolumeWatcher === 'ready') ? 'blocked'
+              : (status.VolumeWatcher === 'not_installed') ? 'allowed' : 'unknown';
+  updateCard('card-watcher', 'val-watcher', vwState, {running:'RUNNING', ready:'READY', not_installed:'OFF'});
+
+  updateCard('card-mtp',       'val-mtp',       status.MtpPtp      || 'unknown');
+  updateCard('card-printers',    'val-printers',    status.UsbPrinters    || 'unknown');
+
+  addLog('Status — Driver:' + (status.UsbStorage||'?') +
+         ' | Write-block:' + (status.WriteProtect||'?') +
+         ' | AutoPlay:' + (status.AutoPlayKilled||'?') +
+         ' | Watcher:' + (status.VolumeWatcher||'?') +
+         ' | Printers:' + (status.UsbPrinters||'?'), 'info');
+}
+
+function updateCard(cardId, valId, state, customLabels) {
+  var card = document.getElementById(cardId);
+  var val  = document.getElementById(valId);
+  if (!card || !val) return;
+  card.className = 'status-card ' + state;
+  
+  var defaults = {
+    'blocked':     'BLOCKED',
+    'allowed':     'ALLOWED',
+    'unknown':     'UNKNOWN',
+    'not_present': 'N/A'
+  };
+  var labels = customLabels || {};
+  // Try raw state key in custom labels, then defaults
+  val.textContent = labels[state] || defaults[state] || state.toUpperCase();
+}
+
+function runAction(action) {
+  if (!isAdmin) {
+    addLog('ERROR: Administrator privileges required.', 'error');
+    return;
+  }
+  
+  var labels = {
+    'block':           'Blocking all devices...',
+    'unblock':         'Unblocking all devices...',
+    'block-storage':   'Blocking USB mass storage...',
+    'unblock-storage': 'Allowing USB mass storage...',
+    'block-printers':  'Blocking USB printers...',
+    'unblock-printers':'Allowing USB printers...'
+  };
+  
+  showLoading(labels[action] || 'Applying changes...');
+  addLog('Action: ' + action, 'info');
+  
+  // Use setTimeout to let UI update before blocking call
+  window.setTimeout(function() {
+    try {
+      var output = RunPS('-Action ' + action);
+      processOutput(output, action);
+    } catch(e) {
+      addLog('Error: ' + e.message, 'error');
+    }
+    hideLoading();
+    window.setTimeout(refreshStatus, 500);
+  }, 100);
+}
+
+function processOutput(output, action) {
+  if (!output) return;
+  var lines = output.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    
+    // Strip timestamp prefix from PS output
+    var msg = line.replace(/^\[\d{4}-\d{2}-\d{2}\s[\d:]+\]\[[\w]+\]\s*/, '');
+    
+    var level = 'default';
+    if (line.indexOf('[SUCCESS]') > -1) level = 'success';
+    else if (line.indexOf('[ERROR]')   > -1) level = 'error';
+    else if (line.indexOf('[WARN]')    > -1) level = 'warn';
+    else if (line.indexOf('[INFO]')    > -1) level = 'info';
+    
+    if (msg) addLog(msg, level);
+  }
+}
+
+function showLoading(text) {
+  document.getElementById('loadingText').textContent = text || 'Applying changes...';
+  document.getElementById('loadingOverlay').className = 'loading active';
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').className = 'loading';
+}
+
+function addLog(msg, type) {
+  var body = document.getElementById('logBody');
+  var d = new Date();
+  var ts = '[' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '] ';
+  
+  var entry = document.createElement('div');
+  entry.className = 'log-entry ' + (type || '');
+  entry.innerHTML = '<span class="ts">' + ts + '</span><span class="msg">' + escHtml(msg) + '</span>';
+  body.appendChild(entry);
+  body.scrollTop = body.scrollHeight;
+  
+  // Keep max 200 entries
+  while (body.children.length > 200) {
+    body.removeChild(body.children[0]);
+  }
+}
+
+
+function saveNotifyConfig() {
+  var company = document.getElementById('inputCompany').value.trim();
+  var msg     = document.getElementById('inputMessage').value.trim();
+  if (!company) { addLog('Company name is required', 'warn'); return; }
+  if (!msg)     { addLog('Message is required', 'warn'); return; }
+
+  if (!isAdmin) { addLog('Administrator privileges required to save config', 'error'); return; }
+
+  showLoading('Saving notification config...');
+  window.setTimeout(function() {
+    try {
+      var escapedCompany = company.replace(/"/g, '''');
+      var escapedMsg     = msg.replace(/"/g, '''');
+      var output = RunPS('-Action set-notify-config -CompanyName "' + escapedCompany + '" -NotifyMessage "' + escapedMsg + '"');
+      addLog('Notification config saved: company=' + company, 'success');
+      updatePreview();
+    } catch(e) {
+      addLog('Error saving config: ' + e.message, 'error');
+    }
+    hideLoading();
+  }, 100);
+}
+
+function updatePreview() {
+  var company = document.getElementById('inputCompany').value || 'IT Security';
+  var msg     = document.getElementById('inputMessage').value || '';
+  var resolved = msg.replace(/\{COMPANY\}/g, company);
+  var el = document.getElementById('previewMsg');
+  if (el) el.textContent = resolved;
+}
+
+// Wire up live preview
+window.setTimeout(function() {
+  var ci = document.getElementById('inputCompany');
+  var mi = document.getElementById('inputMessage');
+  if (ci) ci.onkeyup = updatePreview;
+  if (mi) mi.onkeyup = updatePreview;
+  updatePreview();
+}, 500);
+
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '';
+}
+
+function pad(n) { return n < 10 ? '0' + n : n; }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

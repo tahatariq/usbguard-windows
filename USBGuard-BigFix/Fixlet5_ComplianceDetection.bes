@@ -1,0 +1,82 @@
+; ============================================================================
+; USBGuard - BigFix Fixlet 5: Compliance Detection (v4 — incl. MTP/PTP)
+; ============================================================================
+; Fixlet Name:   USBGuard - Detect Non-Compliant USB Policy
+; Description:   Detection-only. No action. Relevant when ANY layer is missing.
+;                Pair with Fixlet 1 in a Baseline for auto-remediation.
+; ============================================================================
+
+; ── FULL COMPLIANCE RELEVANCE ─────────────────────────────────────────────────
+;
+; (
+;   /* L1 - USBSTOR */
+;   not exists key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry
+;   OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry as string)) != 4
+; )
+; OR (
+;   /* L2 - WriteProtect */
+;   not exists key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry
+;   OR (integer value of (value "WriteProtect" of key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry as string)) != 1
+; )
+; OR (
+;   /* L3 - DenyDeviceClasses */
+;   not exists key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry
+;   OR (integer value of (value "DenyDeviceClasses" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) != 1
+;   OR (integer value of (value "DenyDeviceClassesRetroactive" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) != 1
+; )
+; OR (
+;   /* L4 - AutoPlay */
+;   not exists key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry
+;   OR (integer value of (value "NoDriveTypeAutoRun" of key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry as string)) != 255
+; )
+; OR (
+;   /* L5 - VolumeWatcher task */
+;   not exists task "USBGuard_VolumeWatcher" of task scheduler of operating system
+; )
+; OR (
+;   /* L7 - WPD filesystem driver must be disabled */
+;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) != 4
+; )
+;
+; ── ANALYSIS PROPERTIES ───────────────────────────────────────────────────────
+;
+; Name: USBGuard_L1_USBSTOR
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "KEY_MISSING"
+;
+; Name: USBGuard_L2_WriteProtect
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry)
+;   then (if (integer value of (value "WriteProtect" of key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry as string)) = 1 then "ACTIVE" else "INACTIVE")
+;   else "INACTIVE"
+;
+; Name: USBGuard_L3_DenyClasses
+; Value: if (exists key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry)
+;   then (if (integer value of (value "DenyDeviceClasses" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) = 1 then "ENFORCED" else "OFF")
+;   else "OFF"
+;
+; Name: USBGuard_L4_AutoPlay
+; Value: if (exists key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry)
+;   then (if (integer value of (value "NoDriveTypeAutoRun" of key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry as string)) = 255 then "KILLED" else "LIVE")
+;   else "LIVE"
+;
+; Name: USBGuard_L5_Watcher
+; Value: if (exists task "USBGuard_VolumeWatcher" of task scheduler of operating system) then "INSTALLED" else "MISSING"
+;
+; Name: USBGuard_L7_WPD_MTP
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "NOT_PRESENT"
+;
+; Name: USBGuard_Overall
+; Value: if (
+;   (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry as string)) = 4
+;   AND (integer value of (value "WriteProtect" of key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry as string)) = 1
+;   AND (integer value of (value "DenyDeviceClasses" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) = 1
+;   AND (integer value of (value "NoDriveTypeAutoRun" of key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry as string)) = 255
+;   AND (exists task "USBGuard_VolumeWatcher" of task scheduler of operating system)
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4
+; ) then "COMPLIANT" else "NON-COMPLIANT"
+;
+; ─────────────────────────────────────────────────────────────────────────────

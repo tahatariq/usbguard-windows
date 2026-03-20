@@ -1,0 +1,118 @@
+; ============================================================================
+; USBGuard - BigFix Fixlet 1: Apply Full USB Block Policy (v4 — incl. MTP/PTP)
+; ============================================================================
+; Fixlet Name:   USBGuard - Block USB Storage, MTP/PTP, and Printers
+; Description:   Applies all 7 layers:
+;                L1  USBSTOR Start=4
+;                L2  WriteProtect=1
+;                L3  DenyDeviceClasses (disk/cdrom/floppy/printer GUIDs)
+;                L4  AutoPlay killed, ShellHWDetection stopped
+;                L6  Thunderbolt Start=4
+;                L7  WPD services disabled + MTP/PTP/Imaging GUIDs denied
+;                    Blocks: Android MTP, iPhone/iTunes PTP, cameras,
+;                            media players, any app using WPD transport
+;                NOT blocked: keyboards, mice, USB audio, USB charging
+; Run As:        LocalSystem
+; Idempotent:    Yes
+; ============================================================================
+
+; ── RELEVANCE ─────────────────────────────────────────────────────────────────
+;
+; (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry as string)) != 4
+; OR (integer value of (value "WriteProtect" of key "HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" of native registry as string)) != 1
+; OR (integer value of (value "DenyDeviceClasses" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) != 1
+; OR (integer value of (value "NoDriveTypeAutoRun" of key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry as string)) != 255
+; OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) != 4
+;
+; ─────────────────────────────────────────────────────────────────────────────
+
+action uses wow64 redirection false
+
+waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command ^
+"$ErrorActionPreference = 'Continue';" ^
+"" ^
+"# ── GUIDs ────────────────────────────────────────────────────────────────────" ^
+"$GUID_DISK    = '{4D36E967-E325-11CE-BFC1-08002BE10318}';" ^
+"$GUID_CDROM   = '{4D36E965-E325-11CE-BFC1-08002BE10318}';" ^
+"$GUID_FLOPPY  = '{4D36E969-E325-11CE-BFC1-08002BE10318}';" ^
+"$GUID_PRINT   = '{4D36E979-E325-11CE-BFC1-08002BE10318}';" ^
+"$GUID_WPD     = '{EEC5AD98-8080-425F-922A-DABF3DE3F69A}';" ^
+"$GUID_IMAGING = '{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}';" ^
+"" ^
+"# ── Helpers ──────────────────────────────────────────────────────────────────" ^
+"function EP($p) { if (-not (Test-Path $p)) { New-Item $p -Force | Out-Null } }" ^
+"function SD($p,$n,$v) { EP $p; Set-ItemProperty $p -Name $n -Value $v -Type DWord -Force }" ^
+"function AG($guid) {" ^
+"  $b = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions\DenyDeviceClasses'; EP $b;" ^
+"  $pr = (Get-Item $b -EA SilentlyContinue).Property;" ^
+"  foreach ($p in $pr) { if ((Get-ItemProperty $b -Name $p -EA SilentlyContinue).$p -eq $guid) { return } };" ^
+"  $n = 1; if ($pr) { $n = (($pr | ForEach-Object { try {[int]$_} catch {0} } | Measure-Object -Maximum).Maximum)+1 };" ^
+"  Set-ItemProperty $b -Name $n -Value $guid -Type String" ^
+"}" ^
+"" ^
+"# ── L1: USBSTOR ──────────────────────────────────────────────────────────────" ^
+"SD 'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' 'Start' 4;" ^
+"" ^
+"# ── L2: WriteProtect ─────────────────────────────────────────────────────────" ^
+"SD 'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' 'WriteProtect' 1;" ^
+"" ^
+"# ── L3: DenyDeviceClasses (storage + printers) ───────────────────────────────" ^
+"$db = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions';" ^
+"SD $db 'DenyDeviceClasses' 1; SD $db 'DenyDeviceClassesRetroactive' 1;" ^
+"AG $GUID_DISK; AG $GUID_CDROM; AG $GUID_FLOPPY; AG $GUID_PRINT;" ^
+"" ^
+"# ── L4: AutoPlay + ShellHWDetection ─────────────────────────────────────────" ^
+"SD 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' 'NoDriveTypeAutoRun' 255;" ^
+"SD 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' 'NoDriveAutoRun' 1;" ^
+"SD 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' 'NoAutoplayfornonVolume' 1;" ^
+"try { Set-Service ShellHWDetection -StartupType Disabled -EA SilentlyContinue; Stop-Service ShellHWDetection -Force -EA SilentlyContinue } catch {};" ^
+"" ^
+"# ── L6: Thunderbolt ──────────────────────────────────────────────────────────" ^
+"if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt') { SD 'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt' 'Start' 4 };" ^
+"" ^
+"# ── L7: WPD/MTP/PTP — Android, iPhone/iTunes, cameras ───────────────────────" ^
+"# Save original Start values before disabling (stored in HKLM\SOFTWARE\USBGuard\SavedStart)" ^
+"$saved = 'HKLM:\SOFTWARE\USBGuard\SavedStart'; EP $saved;" ^
+"$wpdSvcs = @(" ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WUDFRd'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WpdUpFltr'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver'" ^
+");" ^
+"$appleSvcs = @(" ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\AppleMobileDeviceService'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\usbaapl64'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\usbaapl'" ^
+");" ^
+"foreach ($svc in ($wpdSvcs + $appleSvcs)) {" ^
+"  if (Test-Path $svc) {" ^
+"    $key = ($svc -replace 'HKLM:\\\\','') -replace '\\\\','_';" ^
+"    $cur = (Get-ItemProperty $svc -Name 'Start' -EA SilentlyContinue).Start;" ^
+"    if ($null -ne $cur -and -not (Get-ItemProperty $saved -Name $key -EA SilentlyContinue)) {" ^
+"      Set-ItemProperty $saved -Name $key -Value $cur -Type DWord -Force" ^
+"    };" ^
+"    SD $svc 'Start' 4;" ^
+"    $name = Split-Path $svc -Leaf; Write-Host \"L7: $name disabled\"" ^
+"  }" ^
+"};" ^
+"# Deny WPD + Imaging class GUIDs" ^
+"AG $GUID_WPD; AG $GUID_IMAGING;" ^
+"# DenyInstall on class keys" ^
+"$classBase = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class';" ^
+"foreach ($g in @($GUID_WPD, $GUID_IMAGING)) {" ^
+"  $cp = $classBase + '\' + $g;" ^
+"  if (Test-Path $cp) { SD $cp 'DenyInstall' 1 }" ^
+"};" ^
+"# Stop currently running WPD/Apple services" ^
+"foreach ($s in @('WUDFSvc','WpdUpFltr','AppleMobileDeviceService')) {" ^
+"  try { $sv = Get-Service $s -EA SilentlyContinue; if ($sv -and $sv.Status -eq 'Running') { Stop-Service $s -Force -EA SilentlyContinue; Write-Host \"Stopped: $s\" } } catch {}" ^
+"};" ^
+"" ^
+"# Eject any currently mounted removable volumes" ^
+"$vols = Get-WmiObject Win32_Volume -Filter 'DriveType=2' -EA SilentlyContinue;" ^
+"if ($vols) { foreach ($v in $vols) { try { $v.Dismount($true,$false) | Out-Null } catch {} } };" ^
+"" ^
+"Write-Host 'USBGuard v4: All 7 layers applied. Storage + MTP/PTP + Printers blocked.'"
+
+if {exit code of action != 0}
+    action requires restart
+endif

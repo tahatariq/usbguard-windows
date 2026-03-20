@@ -1,0 +1,106 @@
+; ============================================================================
+; USBGuard - BigFix Fixlet 4: Remove USB Block Policy (v4 — incl. MTP/PTP)
+; ============================================================================
+; Fixlet Name:   USBGuard - Remove USB Block Policy
+; Description:   1. Strips all DENY ACEs applied by Fixlet 3
+;                2. Restores USBSTOR, WriteProtect, AutoPlay, Thunderbolt
+;                3. Restores WPD services to their original Start values
+;                   (saved by Fixlet 1 in HKLM\SOFTWARE\USBGuard\SavedStart)
+;                4. Removes VolumeWatcher scheduled task
+;                5. Removes all device class deny GUIDs
+;
+; CRITICAL:      DENY ACEs must be stripped BEFORE registry values can be
+;                modified. This is why unblock must run as SYSTEM via BigFix —
+;                a local admin cannot do this themselves.
+;
+; Use case:      Targeted exception for a specific machine. Do NOT target
+;                all endpoints. Re-apply Fixlets 1+2+3 after the exception.
+; Run As:        LocalSystem
+; ============================================================================
+
+action uses wow64 redirection false
+
+waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command ^
+"$ErrorActionPreference = 'Continue';" ^
+"" ^
+"# ── Step 1: Strip DENY ACEs from all protected keys ─────────────────────────" ^
+"function Unprotect-RegKey {" ^
+"  param([Microsoft.Win32.RegistryKey]$Hive, [string]$SubKey)" ^
+"  try {" ^
+"    $key = $Hive.OpenSubKey($SubKey," ^
+"      [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree," ^
+"      [System.Security.AccessControl.RegistryRights]::ChangePermissions);" ^
+"    if (-not $key) { return };" ^
+"    $acl = $key.GetAccessControl();" ^
+"    $deny = $acl.Access | Where-Object { $_.AccessControlType -eq 'Deny' };" ^
+"    foreach ($r in $deny) { $acl.RemoveAccessRule($r) | Out-Null };" ^
+"    $key.SetAccessControl($acl); $key.Close();" ^
+"    Write-Host \"Unprotected: $SubKey\"" ^
+"  } catch { Write-Host \"Error unprotecting $SubKey : $_\" }" ^
+"}" ^
+"" ^
+"$H = [Microsoft.Win32.Registry]::LocalMachine;" ^
+"Unprotect-RegKey $H 'SYSTEM\CurrentControlSet\Services\USBSTOR';" ^
+"Unprotect-RegKey $H 'SYSTEM\CurrentControlSet\Control\StorageDevicePolicies';" ^
+"Unprotect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions';" ^
+"Unprotect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions\DenyDeviceClasses';" ^
+"Unprotect-RegKey $H 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer';" ^
+"Unprotect-RegKey $H 'SOFTWARE\Policies\Microsoft\Windows\Explorer';" ^
+"Unprotect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver';" ^
+"Unprotect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WUDFRd';" ^
+"Unprotect-RegKey $H 'SYSTEM\CurrentControlSet\Services\WpdUpFltr';" ^
+"Unprotect-RegKey $H 'SOFTWARE\USBGuard';" ^
+"" ^
+"$dir = [System.Environment]::GetFolderPath('CommonApplicationData') + '\USBGuard';" ^
+"if (Test-Path $dir) {" ^
+"  $acl = Get-Acl $dir;" ^
+"  $deny = $acl.Access | Where-Object { $_.AccessControlType -eq 'Deny' };" ^
+"  foreach ($r in $deny) { $acl.RemoveAccessRule($r) | Out-Null };" ^
+"  Set-Acl $dir $acl; Write-Host 'ProgramData\USBGuard folder unlocked'" ^
+"};" ^
+"" ^
+"# ── Step 2: Restore L1-L4, L6 ───────────────────────────────────────────────" ^
+"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' -Name Start -Value 3 -Type DWord -Force;" ^
+"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' -Name WriteProtect -Value 0 -Type DWord -Force;" ^
+"$db = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions';" ^
+"Set-ItemProperty $db -Name DenyDeviceClasses -Value 0 -Type DWord -Force;" ^
+"Set-ItemProperty $db -Name DenyDeviceClassesRetroactive -Value 0 -Type DWord -Force;" ^
+"$dl = $db + '\DenyDeviceClasses';" ^
+"if (Test-Path $dl) { Remove-Item $dl -Force -EA SilentlyContinue };" ^
+"Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name NoDriveTypeAutoRun -Value 145 -Type DWord -Force;" ^
+"Remove-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name NoDriveAutoRun -EA SilentlyContinue;" ^
+"Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name NoAutoplayfornonVolume -EA SilentlyContinue;" ^
+"try { Set-Service ShellHWDetection -StartupType Automatic -EA SilentlyContinue; Start-Service ShellHWDetection -EA SilentlyContinue } catch {};" ^
+"if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt') { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt' -Name Start -Value 3 -Type DWord -Force };" ^
+"" ^
+"# ── Step 3: Restore WPD services to their saved original Start values (L7) ───" ^
+"$savedPath = 'HKLM:\SOFTWARE\USBGuard\SavedStart';" ^
+"$wpdSvcs = @(" ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WUDFRd'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WpdUpFltr'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\AppleMobileDeviceService'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\usbaapl64'," ^
+"  'HKLM:\SYSTEM\CurrentControlSet\Services\usbaapl'" ^
+");" ^
+"foreach ($svc in $wpdSvcs) {" ^
+"  if (Test-Path $svc) {" ^
+"    $key      = ($svc -replace 'HKLM:\\\\','') -replace '\\\\','_';" ^
+"    $original = if (Test-Path $savedPath) { (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue).$key } else { $null };" ^
+"    $restore  = if ($null -ne $original) { $original } else { 3 };" ^
+"    Set-ItemProperty $svc -Name Start -Value $restore -Type DWord -Force;" ^
+"    $name = Split-Path $svc -Leaf; Write-Host \"Restored $name Start=$restore\"" ^
+"  }" ^
+"};" ^
+"# Remove DenyInstall from WPD class keys" ^
+"$cb = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class';" ^
+"foreach ($g in @('{EEC5AD98-8080-425F-922A-DABF3DE3F69A}','{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}')) {" ^
+"  $cp = $cb + '\' + $g;" ^
+"  if (Test-Path $cp) { Remove-ItemProperty $cp -Name DenyInstall -EA SilentlyContinue }" ^
+"};" ^
+"" ^
+"# ── Step 4: Remove VolumeWatcher scheduled task ──────────────────────────────" ^
+"Stop-ScheduledTask       -TaskName 'USBGuard_VolumeWatcher' -EA SilentlyContinue;" ^
+"Unregister-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -Confirm:$false -EA SilentlyContinue;" ^
+"" ^
+"Write-Host 'USBGuard: All layers cleared. USB + MTP/PTP access restored. Reconnect devices.'"
