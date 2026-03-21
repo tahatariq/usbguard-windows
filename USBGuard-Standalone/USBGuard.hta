@@ -525,7 +525,7 @@
   .log-entry .ts { color: var(--dim); }
   .log-entry .msg { color: var(--text); }
   .log-entry.success .msg { color: var(--safe); }
-  .log-entry.error .msg { color: var(--danger); }
+  .log-entry.error .msg { color: var (--danger); }
   .log-entry.warn .msg { color: var(--warn); }
   .log-entry.info .msg { color: var(--accent); }
 
@@ -918,8 +918,9 @@ function updateStatusUI(status) {
               : (status.VolumeWatcher === 'not_installed') ? 'allowed' : 'unknown';
   updateCard('card-watcher', 'val-watcher', vwState, {running:'RUNNING', ready:'READY', not_installed:'OFF'});
 
-  updateCard('card-mtp',       'val-mtp',       status.MtpPtp      || 'unknown');
-  updateCard('card-printers',    'val-printers',    status.UsbPrinters    || 'unknown');
+  // MTP/PTP phones and cameras (L7)
+  updateCard('card-phones',    'val-phones',    status.MtpPtp      || 'unknown');
+  updateCard('card-printers',  'val-printers',  status.UsbPrinters || 'unknown');
 
   addLog('Status — Driver:' + (status.UsbStorage||'?') +
          ' | Write-block:' + (status.WriteProtect||'?') +

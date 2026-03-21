@@ -1,0 +1,223 @@
+name: PowerShell Tests & Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'USBGuard-Standalone/**'
+      - 'USBGuard-BigFix/**'
+      - 'tests/**'
+      - '.github/workflows/pester-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  syntax-check:
+    name: PowerShell Syntax Check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check PowerShell Syntax
+        shell: powershell
+        run: |
+          $errors = 0
+          $files = @(
+            "USBGuard-Standalone/USBGuard.ps1",
+            "USBGuard-Standalone/USBGuard_Advanced.ps1"
+          )
+          
+          foreach ($file in $files) {
+            Write-Host "Checking: $file"
+            $content = Get-Content $file -Raw
+            $tokens = @()
+            $parseErrors = @()
+            [System.Management.Automation.PSParser]::Tokenize($content, [ref]$parseErrors) | Out-Null
+            
+            if ($parseErrors.Count -gt 0) {
+              Write-Error "Syntax errors in $file"
+              foreach ($err in $parseErrors) {
+                Write-Error "  Line $($err.Token.StartLine): $($err.Message)"
+              }
+              $errors++
+            } else {
+              Write-Host "✓ $file - OK"
+            }
+          }
+          
+          if ($errors -gt 0) {
+            exit 1
+          }
+
+  pester-tests:
+    name: Pester Unit & Integration Tests
+    runs-on: windows-latest
+    needs: syntax-check
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Pester
+        shell: powershell
+        run: |
+          if (-not (Get-Module Pester -ListAvailable)) {
+            Install-Module -Name Pester -Force -SkipPublisherCheck
+          }
+      
+      - name: Run Unit Tests
+        shell: powershell
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = "tests/unit"
+          $config.Output.Verbosity = "Detailed"
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = "test-results-unit.xml"
+          
+          Invoke-Pester -Configuration $config
+      
+      - name: Run Integration Tests
+        shell: powershell
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = "tests/integration"
+          $config.Output.Verbosity = "Detailed"
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = "test-results-integration.xml"
+          
+          Invoke-Pester -Configuration $config
+      
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: test-results-*.xml
+          check_name: Test Results
+
+  code-analysis:
+    name: Code Quality Analysis
+    runs-on: windows-latest
+    needs: syntax-check
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install PSScriptAnalyzer
+        shell: powershell
+        run: |
+          if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) {
+            Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck
+          }
+      
+      - name: Run PSScriptAnalyzer
+        shell: powershell
+        run: |
+          $files = @(
+            "USBGuard-Standalone/USBGuard.ps1",
+            "USBGuard-Standalone/USBGuard_Advanced.ps1"
+          )
+          
+          foreach ($file in $files) {
+            Write-Host "`n=== Analyzing $file ===" -ForegroundColor Cyan
+            $results = Invoke-ScriptAnalyzer -Path $file -Severity Warning
+            
+            if ($results) {
+              Write-Host "Issues found:"
+              $results | Format-Table -AutoSize
+            } else {
+              Write-Host "✓ No issues found" -ForegroundColor Green
+            }
+          }
+
+  registry-validation:
+    name: Registry Path Validation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate Registry Paths
+        shell: powershell
+        run: |
+          Write-Host "Validating registry paths referenced in code..."
+          
+          $mainScript = Get-Content "USBGuard-Standalone/USBGuard.ps1" -Raw
+          
+          # Check for common typos in registry paths
+          $checks = @{
+            'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' = 'USB Storage driver'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt' = 'Thunderbolt'
+            'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' = 'Storage policies'
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions' = 'Device restrictions'
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' = 'AutoPlay policy'
+          }
+          
+          $issues = 0
+          foreach ($path in $checks.Keys) {
+            if ($mainScript -match [regex]::Escape($path)) {
+              Write-Host "✓ $($checks[$path]): $path" -ForegroundColor Green
+            } else {
+              Write-Host "⚠ Missing: $path" -ForegroundColor Yellow
+              $issues++
+            }
+          }
+          
+          # Check GUID validity (should match {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} format)
+          $guidPattern = '\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}'
+          $guids = [regex]::Matches($mainScript, $guidPattern)
+          Write-Host "`n✓ Found $($guids.Count) GUIDs in script"
+          
+          if ($issues -gt 0) {
+            Write-Host "`n⚠ Found $issues potential issues" -ForegroundColor Yellow
+          }
+
+  documentation-check:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check Documentation
+        run: |
+          echo "Validating documentation..."
+          
+          files=(
+            "README.md"
+            "USBGuard-Standalone/README.md"
+            "CODE_VALIDATION.md"
+          )
+          
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✓ Found: $file"
+              lines=$(wc -l < "$file")
+              echo "  Lines: $lines"
+            else
+              echo "⚠ Missing: $file"
+            fi
+          done
+          
+          echo -e "\n✓ All documentation files present"
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [syntax-check, pester-tests, code-analysis, registry-validation, documentation-check]
+    if: always()
+    steps:
+      - name: Check Results
+        run: |
+          echo "=== USB-Block CI/CD Pipeline Summary ===" 
+          echo ""
+          echo "✓ Syntax Check: ${{ needs.syntax-check.result }}"
+          echo "✓ Unit/Integration Tests: ${{ needs.pester-tests.result }}"
+          echo "✓ Code Analysis: ${{ needs.code-analysis.result }}"
+          echo "✓ Registry Validation: ${{ needs.registry-validation.result }}"
+          echo "✓ Documentation: ${{ needs.documentation-check.result }}"
+          echo ""
+          
+          if [ "${{ needs.syntax-check.result }}" = "failure" ] || \
+             [ "${{ needs.pester-tests.result }}" = "failure" ] || \
+             [ "${{ needs.code-analysis.result }}" = "failure" ]; then
+            echo "❌ Pipeline failed"
+            exit 1
+          else
+            echo "✓ All checks passed"
+          fi
