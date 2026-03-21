@@ -38,12 +38,15 @@ param(
         "block-phones","unblock-phones",
         "block-printers","unblock-printers",
         "install-watcher","remove-watcher",
-        "set-notify-config"
+        "set-notify-config",
+        "add-allowlist","remove-allowlist","list-allowlist",
+        "install-tamper-detection","remove-tamper-detection"
     )]
     [string]$Action = "status",
     [string]$OutputFile    = "",
     [string]$CompanyName   = "",
-    [string]$NotifyMessage = ""
+    [string]$NotifyMessage = "",
+    [string]$DeviceId      = ""
 )
 
 $ErrorActionPreference = "Continue"
@@ -85,11 +88,14 @@ $REG_AUTOPLAY       = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\
 $REG_AUTOPLAY_USER  = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
 $REG_AUTORUN_POLICY = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
 $REG_USBGUARD_CFG   = "HKLM:\SOFTWARE\USBGuard"
+$REG_ALLOWLIST      = "$REG_USBGUARD_CFG\Allowlist"
 
 # ── Scheduled task / paths ─────────────────────────────────────────────────────
 $WATCHER_TASK_NAME = "USBGuard_VolumeWatcher"
+$TAMPER_TASK_NAME  = "USBGuard_TamperDetection"
 $USBGUARD_DIR      = "$env:ProgramData\USBGuard"
 $WATCHER_SCRIPT    = "$USBGUARD_DIR\VolumeWatcher.ps1"
+$TAMPER_SCRIPT     = "$USBGUARD_DIR\TamperDetect.ps1"
 $NOTIFY_SCRIPT     = "$USBGUARD_DIR\Notify.ps1"
 $AUDIT_LOG         = "$USBGUARD_DIR\audit.log"
 
@@ -404,6 +410,51 @@ function Save-NotifyConfig { param([string]$Company,[string]$Message)
     Write-Log "Notification config saved" "SUCCESS"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Allowlist — trusted USB devices exempt from auto-eject
+# ─────────────────────────────────────────────────────────────────────────────
+function Add-AllowlistEntry {
+    param([string]$Id)
+    if (-not $Id) { Write-Log "DeviceId required" "ERROR"; return }
+    Ensure-RegPath $REG_ALLOWLIST
+    $props = (Get-Item $REG_ALLOWLIST -EA SilentlyContinue).Property
+    foreach ($p in $props) {
+        if ((Get-ItemProperty $REG_ALLOWLIST -Name $p -EA SilentlyContinue).$p -eq $Id) {
+            Write-Log "Device already in allowlist: $Id" "INFO"; return
+        }
+    }
+    $next = 1
+    if ($props) { $next = (($props | ForEach-Object { try { [int]$_ } catch { 0 } } | Measure-Object -Maximum).Maximum) + 1 }
+    Set-ItemProperty $REG_ALLOWLIST -Name "$next" -Value $Id -Type String -Force
+    Write-Log "Allowlist: added $Id" "SUCCESS"
+    Write-AuditEntry -Action "allowlist-add" -Detail $Id
+}
+
+function Remove-AllowlistEntry {
+    param([string]$Id)
+    if (-not (Test-Path $REG_ALLOWLIST)) { Write-Log "Allowlist is empty" "INFO"; return }
+    $props = (Get-Item $REG_ALLOWLIST -EA SilentlyContinue).Property
+    $removed = $false
+    foreach ($p in $props) {
+        if ((Get-ItemProperty $REG_ALLOWLIST -Name $p -EA SilentlyContinue).$p -eq $Id) {
+            Remove-ItemProperty $REG_ALLOWLIST -Name $p -EA SilentlyContinue
+            $removed = $true
+        }
+    }
+    if ($removed) { Write-Log "Allowlist: removed $Id" "SUCCESS"; Write-AuditEntry -Action "allowlist-remove" -Detail $Id }
+    else { Write-Log "Device not found in allowlist: $Id" "WARN" }
+}
+
+function Get-AllowlistEntries {
+    if (-not (Test-Path $REG_ALLOWLIST)) { return @() }
+    $props = (Get-Item $REG_ALLOWLIST -EA SilentlyContinue).Property
+    if (-not $props) { return @() }
+    return @($props | ForEach-Object {
+        $v = (Get-ItemProperty $REG_ALLOWLIST -Name $_ -EA SilentlyContinue).$_
+        if ($v) { $v }
+    })
+}
+
 function Write-NotifyScript {
     $cfg     = Get-NotifyConfig
     $title   = ($cfg.Title   -replace '`','``' -replace '"','`"')
@@ -431,9 +482,45 @@ function Write-WatcherScript {
 # USBGuard VolumeWatcher v4 — SYSTEM scheduled task
 $logFile      = "$env:ProgramData\USBGuard\watcher.log"
 $notifyScript = "$env:ProgramData\USBGuard\Notify.ps1"
+$allowlistReg = 'HKLM:\SOFTWARE\USBGuard\Allowlist'
 
 function Log { param([string]$m)
     "[$( (Get-Date -Format 'HH:mm:ss') )] $m" | Add-Content $logFile -Encoding UTF8 -EA SilentlyContinue
+}
+
+function Get-AllowlistEntries_W {
+    if (-not (Test-Path $allowlistReg)) { return @() }
+    $props = (Get-Item $allowlistReg -EA SilentlyContinue).Property
+    if (-not $props) { return @() }
+    return @($props | ForEach-Object { (Get-ItemProperty $allowlistReg -Name $_ -EA SilentlyContinue).$_ })
+}
+
+function Get-UsbDiskPnpId_W {
+    param([string]$DriveLetter)
+    $dl = $DriveLetter.TrimEnd(':')
+    try {
+        $parts = Get-WmiObject -Query "ASSOCIATORS OF {Win32_LogicalDisk.DeviceID='${dl}:'} WHERE AssocClass=Win32_LogicalDiskToPartition" -EA SilentlyContinue
+        foreach ($part in $parts) {
+            $disks = Get-WmiObject -Query "ASSOCIATORS OF {Win32_DiskPartition.DeviceID='$($part.DeviceID)'} WHERE AssocClass=Win32_DiskDriveToDiskPartition" -EA SilentlyContinue
+            foreach ($disk in $disks) {
+                if ($disk.PNPDeviceID) { return $disk.PNPDeviceID }
+            }
+        }
+    } catch { Log "PNP lookup error: $_" }
+    return $null
+}
+
+function Test-AllowlistMatch_W {
+    param([string]$DriveLetter)
+    $entries = Get-AllowlistEntries_W
+    if (-not $entries -or $entries.Count -eq 0) { return $false }
+    $pnpId = Get-UsbDiskPnpId_W $DriveLetter
+    if (-not $pnpId) { return $false }
+    $upper = $pnpId.ToUpper()
+    foreach ($e in $entries) {
+        if ($upper -like "$($e.ToUpper())*") { return $true }
+    }
+    return $false
 }
 
 function Notify-User {
@@ -483,7 +570,7 @@ function Dismount-Volume { param([string]$DriveLetter, [string]$Label)
 }
 
 Log "VolumeWatcher v4 started (PID $PID)"
-$wql = "SELECT * FROM __InstanceCreationEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Volume' AND TargetInstance.DriveType = 2"
+$wql = "SELECT * FROM __InstanceCreationEvent WITHIN 0.25 WHERE TargetInstance ISA 'Win32_Volume' AND TargetInstance.DriveType = 2"
 try { Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA Stop; Log "WMI subscription active" }
 catch { Log "FATAL: WMI failed: $_"; exit 1 }
 
@@ -494,9 +581,13 @@ while ($true) {
             $vol = $e.SourceEventArgs.NewEvent.TargetInstance
             $dl  = $vol.DriveLetter; $label = $vol.Label
             Log "New removable volume: $dl label='$label'"
-            Notify-User
-            Start-Sleep -Milliseconds 800
-            Dismount-Volume -DriveLetter $dl -Label $label
+            if (Test-AllowlistMatch_W $dl) {
+                Log "Allowlisted device on $dl ($label) - access permitted"
+            } else {
+                Notify-User
+                Start-Sleep -Milliseconds 500
+                Dismount-Volume -DriveLetter $dl -Label $label
+            }
         } catch { Log "Event error: $_" }
         Remove-Event      -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
         Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
@@ -537,6 +628,88 @@ function Remove-VolumeWatcher {
         if (Test-Path $f) { Remove-Item $f -Force -EA SilentlyContinue }
     }
     Write-Log "L5: VolumeWatcher removed" "SUCCESS"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Tamper Detection — periodic check every 5 min, re-applies if reverted
+# ─────────────────────────────────────────────────────────────────────────────
+function Write-TamperScript {
+    $content = @'
+# USBGuard TamperDetect — runs every 5 minutes as SYSTEM
+$logFile  = "$env:ProgramData\USBGuard\tamper.log"
+$audLog   = "$env:ProgramData\USBGuard\audit.log"
+$tampered = $false
+
+function TLog { param([string]$m)
+    $ts = Get-Date -Format "HH:mm:ss"
+    "[$ts] $m" | Add-Content $logFile -Encoding UTF8 -EA SilentlyContinue
+    $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ACTION=TAMPER_DETECTED USER=$user $m" | Add-Content $audLog -Encoding UTF8 -EA SilentlyContinue
+}
+
+# L1: USBSTOR Start must be 4
+$v = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' -Name 'Start' -EA SilentlyContinue).Start
+if ($null -ne $v -and $v -ne 4) {
+    TLog "TAMPER L1: USBSTOR Start=$v expected 4 - restoring"
+    Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' -Name 'Start' -Value 4 -Type DWord -Force
+    $tampered = $true
+}
+
+# L2: WriteProtect must be 1
+$v = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' -Name 'WriteProtect' -EA SilentlyContinue).WriteProtect
+if ($null -ne $v -and $v -ne 1) {
+    TLog "TAMPER L2: WriteProtect=$v expected 1 - restoring"
+    Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' -Name 'WriteProtect' -Value 1 -Type DWord -Force
+    $tampered = $true
+}
+
+# L7: WpdFilesystemDriver Start must be 4
+$v = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver' -Name 'Start' -EA SilentlyContinue).Start
+if ($null -ne $v -and $v -ne 4) {
+    TLog "TAMPER L7: WpdFilesystemDriver Start=$v expected 4 - restoring"
+    Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver' -Name 'Start' -Value 4 -Type DWord -Force
+    $tampered = $true
+}
+
+if ($tampered) {
+    try {
+        if (-not [System.Diagnostics.EventLog]::SourceExists('USBGuard')) {
+            [System.Diagnostics.EventLog]::CreateEventSource('USBGuard', 'Application')
+        }
+        Write-EventLog -LogName Application -Source 'USBGuard' -EventId 1009 -EntryType Warning -Message 'USBGuard: Registry tampering detected - policy re-applied.'
+    } catch {}
+    TLog "TAMPER REMEDIATED"
+} else {
+    "[$( (Get-Date -Format 'HH:mm:ss') )] OK - policy intact" | Add-Content $logFile -Encoding UTF8 -EA SilentlyContinue
+}
+'@
+    Set-Content -Path $TAMPER_SCRIPT -Value $content -Encoding UTF8
+}
+
+function Install-TamperDetection {
+    Write-Log "Installing tamper detection (every 5 min)..." "INFO"
+    if (-not (Test-Path $USBGUARD_DIR)) { New-Item $USBGUARD_DIR -ItemType Directory -Force | Out-Null }
+    Write-TamperScript
+    $psArgs    = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$TAMPER_SCRIPT`""
+    $action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $psArgs
+    $trigger   = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 5) -Once -At (Get-Date) -RepetitionDuration ([TimeSpan]::MaxValue)
+    $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -StartWhenAvailable -MultipleInstances IgnoreNew
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    Unregister-ScheduledTask -TaskName $TAMPER_TASK_NAME -Confirm:$false -EA SilentlyContinue
+    Register-ScheduledTask -TaskName $TAMPER_TASK_NAME `
+        -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
+        -Description "USBGuard: Detects and remediates USB policy tampering every 5 minutes" -Force | Out-Null
+    Start-ScheduledTask -TaskName $TAMPER_TASK_NAME -EA SilentlyContinue
+    Write-Log "Tamper detection installed and started" "SUCCESS"
+    Write-AuditEntry -Action "install-tamper-detection"
+}
+
+function Remove-TamperDetection {
+    Stop-ScheduledTask       -TaskName $TAMPER_TASK_NAME -EA SilentlyContinue
+    Unregister-ScheduledTask -TaskName $TAMPER_TASK_NAME -Confirm:$false -EA SilentlyContinue
+    if (Test-Path $TAMPER_SCRIPT) { Remove-Item $TAMPER_SCRIPT -Force -EA SilentlyContinue }
+    Write-Log "Tamper detection removed" "SUCCESS"
+    Write-AuditEntry -Action "remove-tamper-detection"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -590,15 +763,17 @@ function Unblock-UsbPrinters {
 # ─────────────────────────────────────────────────────────────────────────────
 function Get-Status {
     $s = [ordered]@{
-        UsbStorage     = "unknown"
-        WriteProtect   = "unknown"
-        AutoPlayKilled = "unknown"
-        VolumeWatcher  = "unknown"
-        Thunderbolt    = "unknown"
-        MtpPtp         = "unknown"
-        UsbPrinters    = "unknown"
-        CompanyName    = (Get-NotifyConfig).CompanyName
-        Timestamp      = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        UsbStorage      = "unknown"
+        WriteProtect    = "unknown"
+        AutoPlayKilled  = "unknown"
+        VolumeWatcher   = "unknown"
+        Thunderbolt     = "unknown"
+        MtpPtp          = "unknown"
+        UsbPrinters     = "unknown"
+        TamperDetection = "unknown"
+        AllowlistCount  = 0
+        CompanyName     = (Get-NotifyConfig).CompanyName
+        Timestamp       = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     }
 
     if (Test-Path $REG_USBSTOR) {
@@ -634,6 +809,11 @@ function Get-Status {
     $cp = "$REG_CLASS_BASE\$GUID_PRINTER"
     if ((Test-Path $cp) -and (Get-ItemProperty $cp -Name "DenyInstall" -EA SilentlyContinue).DenyInstall -eq 1) { $pb = $true }
     $s.UsbPrinters = if ($pb) { "blocked" } else { "allowed" }
+
+    $tamperTask = Get-ScheduledTask -TaskName $TAMPER_TASK_NAME -EA SilentlyContinue
+    $s.TamperDetection = if ($tamperTask) { $tamperTask.State.ToString().ToLower() } else { "not_installed" }
+
+    $s.AllowlistCount = (Get-AllowlistEntries).Count
 
     return $s
 }
@@ -723,4 +903,16 @@ switch ($Action) {
             ($cfg.Message -replace '\{COMPANY\}', $cfg.CompanyName) | Set-Content "$USBGUARD_DIR\msg.txt" -Encoding UTF8
         }
     }
+
+    "add-allowlist"    { Add-AllowlistEntry    -Id $DeviceId }
+    "remove-allowlist" { Remove-AllowlistEntry -Id $DeviceId }
+    "list-allowlist"   {
+        $entries = Get-AllowlistEntries
+        $json = $entries | ConvertTo-Json
+        Write-Host $json
+        if ($OutputFile) { Set-Content $OutputFile $json -Encoding UTF8 }
+    }
+
+    "install-tamper-detection" { Install-TamperDetection }
+    "remove-tamper-detection"  { Remove-TamperDetection  }
 }

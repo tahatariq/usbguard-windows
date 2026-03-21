@@ -119,26 +119,33 @@ HKLM\SOFTWARE\USBGuard                                        Config + SavedStar
 - **`Save-OriginalStart`** idempotently saves WPD service Start values before disabling.
 - **`Get-SavedStart`** retrieves saved values for clean restore during unblock.
 - **`Add-GuidToDenyList` / `Remove-GuidFromDenyList`** handle the numbered-property pattern Windows uses for device class deny lists.
-- **VolumeWatcher** is a SYSTEM scheduled task running an infinite loop with WMI event subscription. It auto-ejects volumes and dispatches toast via a temporary per-user scheduled task.
+- **VolumeWatcher** is a SYSTEM scheduled task running an infinite loop with WMI event subscription (`WITHIN 0.25` — 250ms polling). It checks each new volume against the allowlist; if not allowlisted, auto-ejects and dispatches toast via a temporary per-user scheduled task.
+- **Allowlist**: `Add-AllowlistEntry` / `Remove-AllowlistEntry` / `Get-AllowlistEntries` manage trusted device PNP IDs in `HKLM\SOFTWARE\USBGuard\Allowlist`. Matched by prefix (`USBSTOR\DISK&VEN_...`) so the trailing `&0` suffix is ignored.
+- **Tamper Detection**: `Install-TamperDetection` installs `USBGuard_TamperDetection` scheduled task (every 5 min, SYSTEM). Checks L1 USBSTOR, L2 WriteProtect, L7 WpdFilesystemDriver; re-applies any reverted values and logs to `tamper.log`, `audit.log`, and EventLog (EventId 1009, Warning).
 - **Logging**: `Write-Log` prefixes `[YYYY-MM-DD HH:mm:ss][LEVEL]` and optionally appends to `$OutputFile` (used by HTA to capture PS output).
 - **Audit Log**: `Write-AuditEntry` appends a line to `%ProgramData%\USBGuard\audit.log` on every block/unblock action. Format: `[timestamp] ACTION=<action> USER=<domain\user>`.
-- **Windows Event Log**: `Write-EventLogEntry` writes to `Application` log, source `USBGuard`. Event IDs 1001–1008 map to each block/unblock action. Source is auto-created on first write.
+- **Windows Event Log**: `Write-EventLogEntry` writes to `Application` log, source `USBGuard`. Event IDs 1001–1009 map to each block/unblock/tamper action. Source is auto-created on first write.
 - **Input Validation**: `Save-NotifyConfig` strips control characters and enforces `CompanyName ≤ 100 chars`, `NotifyMessage ≤ 500 chars` before writing to registry.
 
 ### Action Map
 ```
-status              → Get-Status → JSON
-block               → L1-L7 all layers
-unblock             → reverse all layers
-block-storage       → L1+L2+L3(storage)+L4+L5+L6
-unblock-storage     → reverse above
-block-phones        → L7 (WPD/MTP/PTP)
-unblock-phones      → reverse L7
-block-printers      → L3 (printer GUID) + DenyInstall
-unblock-printers    → reverse above
-install-watcher     → L5 scheduled task only
-remove-watcher      → remove L5 task
-set-notify-config   → save company name + message to HKLM\SOFTWARE\USBGuard
+status                     → Get-Status → JSON (includes AllowlistCount, TamperDetection)
+block                      → L1-L7 all layers
+unblock                    → reverse all layers
+block-storage              → L1+L2+L3(storage)+L4+L5+L6
+unblock-storage            → reverse above
+block-phones               → L7 (WPD/MTP/PTP)
+unblock-phones             → reverse L7
+block-printers             → L3 (printer GUID) + DenyInstall
+unblock-printers           → reverse above
+install-watcher            → L5 scheduled task only
+remove-watcher             → remove L5 task
+set-notify-config          → save company name + message to HKLM\SOFTWARE\USBGuard
+add-allowlist -DeviceId    → add PNP Device ID prefix to allowlist
+remove-allowlist -DeviceId → remove from allowlist
+list-allowlist             → output JSON array of allowlist entries
+install-tamper-detection   → install USBGuard_TamperDetection task (5-min checks)
+remove-tamper-detection    → remove tamper detection task
 ```
 
 ---
@@ -150,9 +157,11 @@ set-notify-config   → save company name + message to HKLM\SOFTWARE\USBGuard
 - **JavaScript layer** parses JSON status from PS and updates the status cards.
 - `refreshStatus()` calls `RunPS('-Action status')` → `parseStatus()` → `updateStatusUI()`.
 - `runAction()` gates on `isAdmin`, shows loading overlay, calls PS, refreshes status.
-- **Status card IDs**: `card-storage`, `card-writeprotect`, `card-autoplay`, `card-watcher`, `card-phones`, `card-printers`
-- **Control panels**: Mass Storage, Phones/MTP/PTP, USB Printers (+ Master Control block/unblock all)
+- **Status card IDs**: `card-storage`, `card-writeprotect`, `card-autoplay`, `card-watcher`, `card-phones`, `card-printers`, `card-tamper`
+- **Control panels**: Mass Storage, Phones/MTP/PTP, USB Printers (+ Master Control block/unblock all + Tamper Detection enable/disable row)
 - **Notification panel**: Company name + message template (saved via `set-notify-config`)
+- **Allowlist panel**: List of allowlisted PNP Device IDs with add/remove/refresh controls (calls `add-allowlist`, `remove-allowlist`, `list-allowlist`)
+- **Tamper Detection**: Status card + Enable/Disable buttons in Master Control row
 
 ---
 
@@ -182,10 +191,20 @@ set-notify-config   → save company name + message to HKLM\SOFTWARE\USBGuard
 ### CI (GitHub Actions — `.github/workflows/pester-tests.yml`)
 Jobs: `syntax-check` → `pester-tests` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
 
-### Test Coverage Gaps
-- No test for `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context / task scheduler)
+### Test Files (76 tests total)
+| File | Tests | Coverage |
+|------|-------|----------|
+| `unit/Registry.Tests.ps1` | 15 | Registry helpers |
+| `unit/StatusDetection.Tests.ps1` | 11 | Status parsing |
+| `unit/WpdMtp.Tests.ps1` | 16 | L7 WPD/MTP/PTP block/unblock |
+| `unit/AuditNotify.Tests.ps1` | 24 | Write-AuditEntry, Write-EventLogEntry, input validation |
+| `integration/BlockUnblock.Tests.ps1` | 10 | Idempotency, round-trips |
+
+### Remaining Coverage Gaps
+- `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context / task scheduler)
+- `Install-TamperDetection` / `Remove-TamperDetection` (same reason)
 - HTA logic is not unit-tested (VBScript/JS — manual testing required)
-- L6 Thunderbolt block/unblock not integration-tested (detection covered in StatusDetection.Tests.ps1)
+- L6 Thunderbolt block/unblock not integration-tested
 
 ---
 

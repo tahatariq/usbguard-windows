@@ -636,6 +636,65 @@
   .np-preview-body { flex: 1; }
   .np-preview-title { font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 2px; letter-spacing: 0.5px; }
   .np-preview-msg   { font-size: 11px; color: var(--dim); line-height: 1.4; font-family: "Share Tech Mono", monospace; }
+
+  /* ── Allowlist Panel ── */
+  .allowlist-panel {
+    background: var(--panel);
+    border: 1px solid rgba(0,255,153,0.15);
+    border-radius: 4px;
+    padding: 14px 18px;
+  }
+  .al-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .al-left { display: flex; align-items: center; gap: 10px; }
+  .al-entries {
+    min-height: 28px; max-height: 80px; overflow-y: auto; margin-bottom: 8px;
+  }
+  .al-entry {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: "Share Tech Mono", monospace; font-size: 11px; color: var(--text);
+  }
+  .al-entry:last-child { border-bottom: none; }
+  .al-entry-id { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-al-remove {
+    background: none; border: 1px solid rgba(255,62,62,0.3); color: var(--danger);
+    font-size: 10px; padding: 2px 8px; cursor: pointer; border-radius: 2px;
+    font-family: "Share Tech Mono", monospace; margin-left: 8px; flex-shrink: 0;
+  }
+  .btn-al-remove:hover { background: rgba(255,62,62,0.1); }
+  .al-add { display: flex; gap: 8px; margin-bottom: 6px; }
+  .al-input {
+    flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    color: var(--text); font-family: "Share Tech Mono", monospace; font-size: 11px;
+    padding: 5px 9px; border-radius: 3px; outline: none;
+  }
+  .al-input:focus { border-color: rgba(0,255,153,0.3); }
+  .btn-al-add {
+    padding: 5px 14px; background: rgba(0,255,153,0.06); border: 1px solid rgba(0,255,153,0.25);
+    color: var(--safe); font-family: "Rajdhani", sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: 1px; cursor: pointer; border-radius: 3px; transition: all 0.2s; white-space: nowrap;
+  }
+  .btn-al-add:hover { background: rgba(0,255,153,0.12); }
+  .btn-refresh-al {
+    padding: 5px 12px; background: none; border: 1px solid var(--border);
+    color: var(--dim); font-family: "Share Tech Mono", monospace; font-size: 11px;
+    cursor: pointer; border-radius: 2px; transition: all 0.2s;
+  }
+  .btn-refresh-al:hover { color: var(--safe); border-color: rgba(0,255,153,0.3); }
+  .al-hint { font-size: 9px; color: var(--dim); font-family: "Share Tech Mono", monospace; line-height: 1.4; }
+
+  /* ── Tamper Detection Row ── */
+  .tamper-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .tamper-info  { flex: 1; }
+  .tamper-label { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 1px; }
+  .tamper-sub   { font-size: 10px; color: var(--dim); font-family: "Share Tech Mono", monospace; margin-top: 2px; }
+  .tamper-actions { display: flex; gap: 8px; }
 </style>
 </head>
 <body>
@@ -701,6 +760,11 @@
         <div class="sc-label">USB Printers</div>
         <div class="sc-value" id="val-printers">Checking...</div>
         <div class="sc-icon">🖨</div>
+      </div>
+      <div class="status-card unknown" id="card-tamper">
+        <div class="sc-label">Tamper Detect</div>
+        <div class="sc-value" id="val-tamper">Checking...</div>
+        <div class="sc-icon">&#128737;</div>
       </div>
     </div>
 
@@ -791,6 +855,16 @@
         <button class="btn-master-block" onclick="runAction('block')">⊘ Block All</button>
         <button class="btn-master-unblock" onclick="runAction('unblock')">✓ Allow All</button>
       </div>
+      <div class="tamper-row">
+        <div class="tamper-info">
+          <div class="tamper-label">Tamper Detection</div>
+          <div class="tamper-sub">Re-applies policy if registry is reverted (every 5 min)</div>
+        </div>
+        <div class="tamper-actions">
+          <button class="btn btn-block" onclick="runAction('install-tamper-detection')">&#9711; Enable</button>
+          <button class="btn btn-unblock" onclick="runAction('remove-tamper-detection')">&#10003; Disable</button>
+        </div>
+      </div>
     </div>
 
 
@@ -823,6 +897,28 @@
           <div class="np-preview-msg" id="previewMsg">Preview updates as you type...</div>
         </div>
       </div>
+    </div>
+
+    <!-- Allowlist Panel -->
+    <div class="allowlist-panel">
+      <div class="al-header">
+        <div class="al-left">
+          <div class="cp-icon" style="background:rgba(0,255,153,0.05);border-color:rgba(0,255,153,0.15);">&#10003;</div>
+          <div>
+            <div class="cp-title">Device Allowlist</div>
+            <div class="cp-desc">Trusted USB drives exempt from auto-eject (by PNP Device ID)</div>
+          </div>
+        </div>
+        <button class="btn-refresh-al" onclick="refreshAllowlist(false)">&#8635; Refresh</button>
+      </div>
+      <div class="al-entries" id="alEntries">
+        <span style="color:var(--dim);font-size:11px;font-family:'Share Tech Mono',monospace">Loading...</span>
+      </div>
+      <div class="al-add">
+        <input class="al-input" id="alInput" type="text" placeholder="PNP Device ID  e.g. USBSTOR\DISK&amp;VEN_SanDisk&amp;PROD_..." />
+        <button class="btn-al-add" onclick="addAllowlistEntry()">+ Add</button>
+      </div>
+      <div class="al-hint">Tip: run USBGuard_Advanced.ps1 list-devices to find the PNP Device ID of a connected USB drive.</div>
     </div>
 
     <!-- Log -->
@@ -963,12 +1059,21 @@ function updateStatusUI(status) {
   updateCard('card-phones',    'val-phones',    status.MtpPtp      || 'unknown');
   updateCard('card-printers',  'val-printers',  status.UsbPrinters || 'unknown');
 
+  // Tamper detection
+  updateCard('card-tamper', 'val-tamper', status.TamperDetection || 'not_installed',
+    {running: 'ACTIVE', ready: 'READY', not_installed: 'OFF'});
+
+  // Refresh allowlist silently
+  refreshAllowlist(true);
+
   addLog('Status — Driver:' + (status.UsbStorage||'?') +
          ' | Write-block:' + (status.WriteProtect||'?') +
          ' | AutoPlay:' + (status.AutoPlayKilled||'?') +
          ' | Watcher:' + (status.VolumeWatcher||'?') +
          ' | Phones/MTP:' + (status.MtpPtp||'?') +
-         ' | Printers:' + (status.UsbPrinters||'?'), 'info');
+         ' | Printers:' + (status.UsbPrinters||'?') +
+         ' | Tamper:' + (status.TamperDetection||'?') +
+         ' | Allowlist:' + (status.AllowlistCount||0), 'info');
 }
 
 function updateCard(cardId, valId, state, customLabels) {
@@ -1002,8 +1107,10 @@ function runAction(action) {
     'unblock-storage':  'Allowing USB mass storage...',
     'block-phones':     'Blocking phones and cameras (MTP/PTP)...',
     'unblock-phones':   'Allowing phones and cameras (MTP/PTP)...',
-    'block-printers':   'Blocking USB printers...',
-    'unblock-printers': 'Allowing USB printers...'
+    'block-printers':              'Blocking USB printers...',
+    'unblock-printers':            'Allowing USB printers...',
+    'install-tamper-detection':    'Enabling tamper detection...',
+    'remove-tamper-detection':     'Disabling tamper detection...'
   };
   
   showLoading(labels[action] || 'Applying changes...');
@@ -1068,6 +1175,54 @@ function addLog(msg, type) {
   }
 }
 
+
+function refreshAllowlist(silent) {
+  var out = RunPS("-Action list-allowlist");
+  var el  = document.getElementById("alEntries");
+  if (!el) return;
+  try {
+    out = (out || "").trim();
+    if (!out || out === "null" || out === "[]") { renderAllowlist([], el); return; }
+    var entries = JSON.parse(out);
+    if (typeof entries === "string") { entries = [entries]; }
+    if (!Array.isArray(entries))     { entries = (entries && entries.value) ? entries.value : []; }
+    renderAllowlist(entries, el);
+  } catch(ex) { renderAllowlist([], el); }
+}
+
+function renderAllowlist(entries, el) {
+  if (!entries || entries.length === 0) {
+    el.innerHTML = '<span style="color:var(--dim);font-size:11px;font-family:\'Share Tech Mono\',monospace">No allowlisted devices.</span>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < entries.length; i++) {
+    if (!entries[i]) continue;
+    var safe = escHtml(String(entries[i]));
+    var raw  = String(entries[i]).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    html += '<div class="al-entry"><span class="al-entry-id" title="' + safe + '">' + safe + '</span>';
+    html += '<button class="btn-al-remove" onclick="removeAllowlistEntry(\'' + raw + '\')">Remove</button></div>';
+  }
+  el.innerHTML = html;
+}
+
+function addAllowlistEntry() {
+  var inp = document.getElementById("alInput");
+  var val = inp ? inp.value.trim() : "";
+  if (!val) { return; }
+  if (!isAdmin) { addLog("Administrator privileges required", "error"); return; }
+  RunPS("-Action add-allowlist -DeviceId \"" + val + "\"");
+  inp.value = "";
+  refreshAllowlist(false);
+  addLog("Allowlist: added " + val, "success");
+}
+
+function removeAllowlistEntry(deviceId) {
+  if (!isAdmin) { addLog("Administrator privileges required", "error"); return; }
+  RunPS("-Action remove-allowlist -DeviceId \"" + deviceId + "\"");
+  refreshAllowlist(false);
+  addLog("Allowlist: removed " + deviceId, "warn");
+}
 
 function saveNotifyConfig() {
   var company = document.getElementById('inputCompany').value.trim();

@@ -70,6 +70,7 @@ jobs:
           $ErrorActionPreference = "Continue"
           $config = New-PesterConfiguration
           $config.Run.Path = "tests/unit"
+          $config.Run.Exit = $true
           $config.Output.Verbosity = "Detailed"
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = "test-results-unit.xml"
@@ -83,6 +84,7 @@ jobs:
           $ErrorActionPreference = "Continue"
           $config = New-PesterConfiguration
           $config.Run.Path = "tests/integration"
+          $config.Run.Exit = $true
           $config.Output.Verbosity = "Detailed"
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = "test-results-integration.xml"
