@@ -65,27 +65,27 @@ Describe "Write-AuditEntry" {
 
     It "Should write a line containing ACTION= and USER=" {
         Write-AuditEntry_Test -AuditLog $testLog -Dir $testDir -Action "block"
-        $lines = Get-Content $testLog
+        $lines = @(Get-Content $testLog)
         $lines[0] | Should -Match "ACTION=block"
         $lines[0] | Should -Match "USER="
     }
 
     It "Should include Detail when provided" {
         Write-AuditEntry_Test -AuditLog $testLog -Dir $testDir -Action "block" -Detail "All 7 layers applied"
-        $lines = Get-Content $testLog
+        $lines = @(Get-Content $testLog)
         $lines[0] | Should -Match "All 7 layers applied"
     }
 
     It "Should not include extra space when Detail is empty" {
         Write-AuditEntry_Test -AuditLog $testLog -Dir $testDir -Action "block-storage"
-        $lines = Get-Content $testLog
+        $lines = @(Get-Content $testLog)
         $lines[0] | Should -Match "ACTION=block-storage USER="
         $lines[0] | Should -Not -Match "USER=\s+$"
     }
 
     It "Should include a timestamp in [YYYY-MM-DD HH:mm:ss] format" {
         Write-AuditEntry_Test -AuditLog $testLog -Dir $testDir -Action "unblock"
-        $lines = Get-Content $testLog
+        $lines = @(Get-Content $testLog)
         $lines[0] | Should -Match "\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]"
     }
 
@@ -132,7 +132,7 @@ Describe "Save-NotifyConfig input validation" {
         }
 
         It "Should strip control characters (0x01-0x1F)" {
-            $input = "Acme`x01`x1FCorp"
+            $input = "Acme" + [char]0x01 + [char]0x1F + "Corp"
             Invoke-CompanyValidation $input | Should -Be "AcmeCorp"
         }
 
@@ -169,7 +169,7 @@ Describe "Save-NotifyConfig input validation" {
         }
 
         It "Should strip control characters" {
-            $input = "Contact`x01IT`x1Fsupport"
+            $input = "Contact" + [char]0x01 + "IT" + [char]0x1F + "support"
             Invoke-MessageValidation $input | Should -Be "ContactITsupport"
         }
 
