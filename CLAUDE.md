@@ -39,7 +39,7 @@ usb-block/
 │   ├── simulation/BypassAttempt.Simulation.ps1    # Red-team bypass vector checklist
 │   └── integration/BlockUnblock.Tests.ps1  # Pester integration tests
 │
-├── .github/workflows/pester-tests.yml  # CI: matrix (Win2019/Win2022/Win2025), syntax, Pester, PSScriptAnalyzer
+├── .github/workflows/pester-tests.yml  # CI: matrix (Win2022/Win2025), syntax, Pester, PSScriptAnalyzer
 ├── Run-Tests.ps1              # Local test runner helper
 ├── CODE_VALIDATION.md         # Bug tracker / validation report
 └── CLAUDE.md                  # This file
