@@ -9,15 +9,20 @@
 - **Impact:** Status updates now display correctly without silent failures
 
 ### 2. **Unit Tests** ✅
-- **Registry.Tests.ps1** (50+ test cases)
+- **Registry.Tests.ps1** (15 test cases)
   - Registry path creation, DWord operations, value removal
   - Duplicate GUID prevention
   - Safe value deletion without throwing errors
-  
-- **StatusDetection.Tests.ps1** (30+ test cases)
+
+- **StatusDetection.Tests.ps1** (11 test cases)
   - USB storage status detection (blocked/allowed)
   - WriteProtect, AutoPlay, Thunderbolt state detection
   - JSON parsing and serialization
+
+- **WpdMtp.Tests.ps1** (15 test cases)
+  - Layer 7 status detection: blocked / partial / allowed
+  - Block: GUID deny list, service disable, flags, idempotency
+  - Unblock: GUID removal, restore from saved value, fallback, roundtrip
 
 ### 3. **Integration Tests** ✅
 - **BlockUnblock.Tests.ps1** (40+ test cases)
@@ -78,7 +83,7 @@ cd C:\path\to\usb-block
 # 3. Run tests
 .\Run-Tests.ps1
 
-# Expected: ~80 tests pass, 0 fail
+# Expected: ~56 tests pass, 0 fail
 ```
 
 ### GitHub (Automated CI/CD)
@@ -103,12 +108,13 @@ git push origin feature-branch
 
 | Component | Unit Tests | Integration Tests | Status |
 |-----------|:----------:|:----------------:|:------:|
-| Registry operations | ✅ 25 | ✅ 8 | Fully covered |
-| Status detection | ✅ 20 | ✅ 4 | Fully covered |
-| Block/Unblock logic | ⚠️ 5 | ✅ 20 | Block/Unblock covered |
-| GUID management | ✅ 6 | ✅ 3 | Fully covered |
-| Notifications | ⚠️ 2 | ✅ 5 | Configuration covered |
-| **TOTAL** | **~58** | **~40** | **~98 tests** |
+| Registry operations | ✅ 15 | ✅ 8 | Fully covered |
+| Status detection | ✅ 11 | ✅ 4 | Fully covered |
+| WPD/MTP/PTP (L7) | ✅ 15 | — | Fully covered |
+| Block/Unblock logic | — | ✅ 20 | Fully covered |
+| GUID management | ✅ (in WpdMtp) | ✅ 3 | Fully covered |
+| Notifications | — | ✅ 3 | Configuration covered |
+| **TOTAL** | **~41** | **~15** | **~56 tests** |
 
 ---
 
@@ -122,10 +128,11 @@ usb-block/
 │   └── MockRegistry.psm1         ← Safe registry mocking
 ├── tests/
 │   ├── unit/
-│   │   ├── Registry.Tests.ps1    ← Low-level registry ops
-│   │   └── StatusDetection.Tests.ps1 ← Status queries
+│   │   ├── Registry.Tests.ps1        ← Low-level registry ops
+│   │   ├── StatusDetection.Tests.ps1 ← Status queries
+│   │   └── WpdMtp.Tests.ps1          ← Layer 7 WPD/MTP/PTP
 │   └── integration/
-│       └── BlockUnblock.Tests.ps1 ← End-to-end workflows
+│       └── BlockUnblock.Tests.ps1    ← End-to-end workflows
 ├── Run-Tests.ps1                 ← Local test runner
 ├── TESTING.md                    ← This guide
 └── USBGuard-Standalone/
@@ -175,8 +182,8 @@ Running Unit Tests
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Test Summary
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Unit Tests: 58 passed, 0 failed
-Integration Tests: 40 passed, 0 failed
+Unit Tests: 41 passed, 0 failed
+Integration Tests: 15 passed, 0 failed
 ```
 
 ### After GitHub Push

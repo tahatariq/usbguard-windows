@@ -28,6 +28,7 @@ usb-block/
 ├── tests/
 │   ├── unit/Registry.Tests.ps1          # Pester unit tests — registry helpers
 │   ├── unit/StatusDetection.Tests.ps1   # Pester unit tests — status parsing
+│   ├── unit/WpdMtp.Tests.ps1            # Pester unit tests — Layer 7 WPD/MTP/PTP
 │   └── integration/BlockUnblock.Tests.ps1  # Pester integration tests
 │
 ├── .github/workflows/pester-tests.yml  # CI: syntax, Pester, PSScriptAnalyzer, reg validation
@@ -179,10 +180,9 @@ set-notify-config   → save company name + message to HKLM\SOFTWARE\USBGuard
 Jobs: `syntax-check` → `pester-tests` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
 
 ### Test Coverage Gaps
-- No Pester tests for `Get-WpdStatus` or L7 block/unblock functions
-- No test for `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context)
+- No test for `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context / task scheduler)
 - HTA logic is not unit-tested (VBScript/JS — manual testing required)
-- Thunderbolt tests exist in StatusDetection but L6 block/unblock not integration-tested
+- L6 Thunderbolt block/unblock not integration-tested (detection covered in StatusDetection.Tests.ps1)
 
 ---
 

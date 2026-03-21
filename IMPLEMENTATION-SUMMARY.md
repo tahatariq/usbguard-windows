@@ -12,9 +12,10 @@ A complete testing and automation framework has been added to the USB-Block proj
 
 | File | Purpose | Test Cases |
 |------|---------|-----------|
-| `tests/unit/Registry.Tests.ps1` | Registry operation testing | 25+ |
-| `tests/unit/StatusDetection.Tests.ps1` | Status detection logic | 20+ |
-| `tests/integration/BlockUnblock.Tests.ps1` | End-to-end workflows | 40+ |
+| `tests/unit/Registry.Tests.ps1` | Registry operation testing | 15 |
+| `tests/unit/StatusDetection.Tests.ps1` | Status detection logic | 11 |
+| `tests/unit/WpdMtp.Tests.ps1` | Layer 7 WPD/MTP/PTP | 15 |
+| `tests/integration/BlockUnblock.Tests.ps1` | End-to-end workflows | 15 |
 
 ### Automation & Infrastructure
 
@@ -395,15 +396,16 @@ Verified: Doesn't accidentally enable disabled services
 
 ## Files Summary
 
-### Created (7 files)
-1. `tests/unit/Registry.Tests.ps1` - 200+ lines
-2. `tests/unit/StatusDetection.Tests.ps1` - 150+ lines
-3. `tests/integration/BlockUnblock.Tests.ps1` - 250+ lines
-4. `.github/workflows/pester-tests.yml` - 150+ lines
-5. `Run-Tests.ps1` - 70+ lines
-6. `test-helpers/MockRegistry.psm1` - 90+ lines
-7. `TESTING.md` - 500+ lines
-8. `QUICK-START-TESTING.md` - 250+ lines
+### Created (8 files)
+1. `tests/unit/Registry.Tests.ps1`
+2. `tests/unit/StatusDetection.Tests.ps1`
+3. `tests/unit/WpdMtp.Tests.ps1` — Layer 7 WPD/MTP/PTP tests
+4. `tests/integration/BlockUnblock.Tests.ps1`
+5. `.github/workflows/pester-tests.yml`
+6. `Run-Tests.ps1`
+7. `test-helpers/MockRegistry.psm1`
+8. `TESTING.md`
+9. `QUICK-START-TESTING.md`
 
 ### Modified (1 file)
 1. `USBGuard-Standalone/USBGuard.hta` - Bug fix in JavaScript

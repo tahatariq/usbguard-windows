@@ -123,8 +123,11 @@ Properties included:
 - `USBGuard_L3_DenyClasses` — ENFORCED / OFF
 - `USBGuard_L4_AutoPlay` — KILLED / LIVE
 - `USBGuard_L5_Watcher` — INSTALLED / MISSING
+- `USBGuard_L6_Thunderbolt` — BLOCKED / OPEN / NOT_PRESENT
 - `USBGuard_L7_WPD_MTP` — BLOCKED / OPEN / NOT_PRESENT
 - `USBGuard_Overall` — **COMPLIANT** / **NON-COMPLIANT**
+
+> **Note:** `USBGuard_L6_Thunderbolt` returns `NOT_PRESENT` on machines without Thunderbolt hardware — these machines are not penalised in `USBGuard_Overall`.
 
 ---
 

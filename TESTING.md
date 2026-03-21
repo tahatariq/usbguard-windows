@@ -63,7 +63,7 @@ Describing Registry Helper Functions
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Test Summary
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Unit Tests: 28 passed, 0 failed
+Unit Tests: 41 passed, 0 failed
 Integration Tests: 15 passed, 0 failed
 ```
 
@@ -99,6 +99,18 @@ Tests status check and reporting logic:
 - Correct interpretation of registry values (4=blocked, 3=allowed, etc.)
 - Graceful degradation when keys missing
 - JSON output validation
+
+#### WpdMtp.Tests.ps1
+Tests Layer 7 (WPD/MTP/PTP) status, block, and unblock logic:
+- `Get-WpdStatus` — blocked / partial / allowed detection
+- `Block-WpdMtp` — GUID deny list population, service disable, flags set, idempotency
+- `Unblock-WpdMtp` — GUID removal, service restore from saved value, fallback to Start=3, deny flags cleared
+- Full block→unblock roundtrip
+
+**Key Tests:**
+- "partial" state when only GUID or only service is blocked (not both)
+- Original Start value preserved; not overwritten on second block
+- Services that were already disabled (Start=4) stay disabled after unblock
 
 ### Integration Tests (`tests/integration/`)
 

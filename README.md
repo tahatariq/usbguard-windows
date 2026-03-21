@@ -60,6 +60,7 @@ usb-block/
 ├── tests/
 │   ├── unit/Registry.Tests.ps1          # Registry helper function tests
 │   ├── unit/StatusDetection.Tests.ps1   # Status detection tests
+│   ├── unit/WpdMtp.Tests.ps1            # Layer 7 WPD/MTP/PTP tests
 │   └── integration/BlockUnblock.Tests.ps1  # Block/unblock roundtrip tests
 │
 ├── .github/workflows/pester-tests.yml  # CI pipeline
