@@ -5,10 +5,11 @@ BeforeAll {
 }
 
 Describe "Registry Helper Functions" {
-    
-    # Mock test registry path
-    $testRegPath = "HKLM:\SOFTWARE\USBGuard_Test"
-    
+
+    BeforeAll {
+        $testRegPath = "HKLM:\SOFTWARE\USBGuard_Test"
+    }
+
     BeforeEach {
         # Clean up test registry entries
         if (Test-Path $testRegPath) {

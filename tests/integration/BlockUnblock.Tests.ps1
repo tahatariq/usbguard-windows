@@ -3,9 +3,11 @@ BeforeAll {
 }
 
 Describe "Block/Unblock Operations - Idempotency" {
-    
-    $testRegBase = "HKLM:\SOFTWARE\USBGuard_IntegrationTest"
-    
+
+    BeforeAll {
+        $testRegBase = "HKLM:\SOFTWARE\USBGuard_IntegrationTest"
+    }
+
     BeforeEach {
         if (Test-Path $testRegBase) {
             Remove-Item $testRegBase -Recurse -Force -ErrorAction SilentlyContinue

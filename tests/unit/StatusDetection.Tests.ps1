@@ -3,9 +3,11 @@ BeforeAll {
 }
 
 Describe "Status Detection" {
-    
-    $testRegBase = "HKLM:\SOFTWARE\USBGuard_StatusTest"
-    
+
+    BeforeAll {
+        $testRegBase = "HKLM:\SOFTWARE\USBGuard_StatusTest"
+    }
+
     BeforeEach {
         if (Test-Path $testRegBase) {
             Remove-Item $testRegBase -Recurse -Force -ErrorAction SilentlyContinue
