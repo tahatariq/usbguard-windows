@@ -2,7 +2,7 @@
 
 ## Overview
 
-A complete testing and automation framework has been added to the USB-Block project, transforming it from a code-only project into a professionally tested and continuously integrated system.
+A complete testing and automation framework has been added to the USBGuard project, transforming it from a code-only project into a professionally tested and continuously integrated system.
 
 ---
 
@@ -14,14 +14,22 @@ A complete testing and automation framework has been added to the USB-Block proj
 |------|---------|-----------|
 | `tests/unit/Registry.Tests.ps1` | Registry operation testing | 15 |
 | `tests/unit/StatusDetection.Tests.ps1` | Status detection logic | 11 |
-| `tests/unit/WpdMtp.Tests.ps1` | Layer 7 WPD/MTP/PTP | 15 |
-| `tests/integration/BlockUnblock.Tests.ps1` | End-to-end workflows | 15 |
+| `tests/unit/WpdMtp.Tests.ps1` | Layer 7 WPD/MTP/PTP | 16 |
+| `tests/unit/AuditNotify.Tests.ps1` | Audit log + input validation | 24 |
+| `tests/unit/ComplianceReport.Tests.ps1` | Layer status map + HTML report | 25 |
+| `tests/unit/NotifyWebhook.Tests.ps1` | Teams + Slack payload builders | 21 |
+| `tests/integration/BlockUnblock.Tests.ps1` | End-to-end workflows | 10 |
+| `USBGuard-API/tests/test_api.py` | API endpoint integration tests | 16 |
+| `USBGuard-API/tests/test_date_parser.py` | Date parsing + rejection | 19 |
+| `USBGuard-API/tests/test_models.py` | Pydantic validation | 10 |
+| `USBGuard-API/tests/test_bigfix.py` | Scheduling offsets + encoding | 14 |
 
 ### Automation & Infrastructure
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/pester-tests.yml` | GitHub Actions CI/CD pipeline |
+| `.github/workflows/pester-tests.yml` | GitHub Actions CI/CD pipeline (Win2022 + Win2025) |
+| `.github/workflows/api-tests.yml` | GitHub Actions CI/CD pipeline for Python API (ubuntu-latest) |
 | `Run-Tests.ps1` | Local test runner script |
 | `test-helpers/MockRegistry.psm1` | Safe registry mocking for tests |
 
@@ -385,7 +393,7 @@ Verified: Doesn't accidentally enable disabled services
 | Aspect | Before | After |
 |--------|--------|-------|
 | **Code Quality** | Manual review | Automated analysis + tests |
-| **Regression Prevention** | Hope it works | 98 automated tests catch issues |
+| **Regression Prevention** | Hope it works | 181 automated tests catch issues |
 | **Deployment Safety** | Unknown state | All tests passed on CI/CD |
 | **Documentation** | Basic README | Complete testing guide |
 | **Bug Detection** | In production | During development |
@@ -411,9 +419,9 @@ Verified: Doesn't accidentally enable disabled services
 1. `USBGuard-Standalone/USBGuard.hta` - Bug fix in JavaScript
 
 ### Total Addition
-- **~2,000 lines** of test code and documentation
-- **98+ test cases** across unit and integration
-- **Professional CI/CD pipeline** with 6 automated stages
+- **~4,000 lines** of test code and documentation
+- **181 test cases** across PowerShell unit/integration and Python API tests
+- **Two CI/CD pipelines** — Pester (Win2022+Win2025) and pytest (ubuntu-latest)
 
 ---
 
@@ -451,7 +459,7 @@ Verified: Doesn't accidentally enable disabled services
 
 ## Conclusion
 
-The USB-Block project now has:
+The USBGuard project now has:
 ✅ Professional testing framework  
 ✅ Continuous integration pipeline  
 ✅ Automated bug detection  

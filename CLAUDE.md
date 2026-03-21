@@ -11,7 +11,7 @@ USBGuard is an enterprise USB device management and lockdown solution for Window
 Two deployment variants share the same 7-layer protection model:
 
 ```
-usb-block/
+usbguard-windows/
 ├── USBGuard-Standalone/       # IT-admin GUI + PS backend, no fleet mgmt
 │   ├── USBGuard.ps1           # Core PS5.1 backend — all 7 layers + watcher
 │   ├── USBGuard_Advanced.ps1       # List devices, export policy to JSON
@@ -48,7 +48,7 @@ usb-block/
 │   │   ├── auth.py            # API key middleware (X-API-Key header)
 │   │   └── config.py          # Settings loaded from appsettings.json
 │   ├── tests/
-│   │   ├── test_api.py        # 17 API integration tests (TestClient + mocked BigFix)
+│   │   ├── test_api.py        # 16 API integration tests (TestClient + mocked BigFix)
 │   │   ├── test_date_parser.py # 19 date parsing tests (5 supported formats + rejection of unsupported/ambiguous)
 │   │   ├── test_models.py     # 12 Pydantic validation tests
 │   │   └── test_bigfix.py     # 14 scheduling offset + encoding tests
@@ -225,16 +225,26 @@ Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-v
 **`.github/workflows/api-tests.yml`** — Python/FastAPI tests
 Runs on `ubuntu-latest` when anything under `USBGuard-API/` changes. Creates a stub `appsettings.json` (secrets mocked in tests — no real BigFix needed). Publishes JUnit results via `dorny/test-reporter`.
 
-### Test Files (116 tests total)
+### Test Files (181 tests total — 122 PowerShell + 59 API)
+
+**PowerShell (Pester):**
 | File | Tests | Coverage |
 |------|-------|----------|
 | `unit/Registry.Tests.ps1` | 15 | Registry helpers |
 | `unit/StatusDetection.Tests.ps1` | 11 | Status parsing |
 | `unit/WpdMtp.Tests.ps1` | 16 | L7 WPD/MTP/PTP block/unblock |
 | `unit/AuditNotify.Tests.ps1` | 24 | Write-AuditEntry, Write-EventLogEntry, input validation |
-| `unit/ComplianceReport.Tests.ps1` | 20 | Layer status map, HTML report generation |
-| `unit/NotifyWebhook.Tests.ps1` | 20 | Teams + Slack payload builders |
+| `unit/ComplianceReport.Tests.ps1` | 25 | Layer status map, HTML report generation |
+| `unit/NotifyWebhook.Tests.ps1` | 21 | Teams + Slack payload builders |
 | `integration/BlockUnblock.Tests.ps1` | 10 | Idempotency, round-trips |
+
+**API (pytest):**
+| File | Tests | Coverage |
+|------|-------|----------|
+| `USBGuard-API/tests/test_api.py` | 16 | All three endpoints, auth rejection, BigFix error handling |
+| `USBGuard-API/tests/test_date_parser.py` | 19 | 5 supported formats + rejection of unsupported/ambiguous |
+| `USBGuard-API/tests/test_models.py` | 10 | Required fields, non-empty RITM, day range (1–365) |
+| `USBGuard-API/tests/test_bigfix.py` | 14 | Scheduling offset calculation, PowerShell base64 encoding |
 
 ### Simulation Scripts (manual, require admin)
 | Script | What it proves |

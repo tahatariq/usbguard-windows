@@ -2,7 +2,7 @@
 
 ## Overview
 
-USB-Block now includes a complete testing and automation framework with:
+USBGuard now includes a complete testing and automation framework with:
 - ✅ Unit tests for registry operations
 - ✅ Integration tests for block/unblock roundtrips
 - ✅ GitHub Actions CI/CD pipeline
@@ -23,7 +23,7 @@ Install-Module -Name Pester -Force -SkipPublisherCheck
 ### Run All Tests
 
 ```powershell
-cd /path/to/usb-block
+cd /path/to/usbguard-windows
 .\Run-Tests.ps1
 ```
 

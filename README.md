@@ -54,7 +54,7 @@ Blocks USB storage, phones, and cameras on Windows machines. Two deployment opti
 ## Project Structure
 
 ```
-usb-block/
+usbguard-windows/
 ├── USBGuard-Standalone/
 │   ├── Launch_USBGuard.bat              ← Start here for GUI
 │   ├── USBGuard.hta                     ← Graphical admin interface
@@ -71,13 +71,22 @@ usb-block/
 │   ├── Fixlet4_Unblock.bes              ← Temporary exception (targeted use only)
 │   └── Fixlet5_ComplianceDetection.bes  ← Per-layer audit + Analysis Properties
 │
+├── USBGuard-API/                        ← Python/FastAPI REST API for exception management
+│   ├── app/                             ← FastAPI app (routes, BigFix client, auth, models)
+│   ├── tests/                           ← 59 pytest tests (BigFix fully mocked)
+│   ├── appsettings.example.json         ← Copy to appsettings.json and fill in secrets
+│   ├── web.config                       ← IIS HttpPlatformHandler config
+│   └── README.md                        ← API deployment + reference guide
+│
 ├── tests/
-│   ├── unit/                            ← Pester unit tests (116 tests)
-│   ├── integration/                     ← Block/unblock roundtrip tests
+│   ├── unit/                            ← Pester unit tests (112 tests)
+│   ├── integration/                     ← Block/unblock roundtrip tests (10 tests)
 │   └── simulation/                      ← Manual end-to-end validation scripts
 │
-├── Run-Tests.ps1                        ← Local test runner
-└── .github/workflows/pester-tests.yml  ← CI pipeline
+├── Run-Tests.ps1                        ← Local PowerShell test runner
+└── .github/workflows/
+    ├── pester-tests.yml                 ← CI: Win2022 + Win2025 matrix
+    └── api-tests.yml                    ← CI: Python/pytest on ubuntu-latest
 ```
 
 ---
