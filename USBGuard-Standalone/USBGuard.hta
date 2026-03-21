@@ -679,6 +679,11 @@
         <div class="sc-value" id="val-watcher">Checking...</div>
         <div class="sc-icon">👁</div>
       </div>
+      <div class="status-card unknown" id="card-phones">
+        <div class="sc-label">Phones / Cameras</div>
+        <div class="sc-value" id="val-phones">Checking...</div>
+        <div class="sc-icon">📱</div>
+      </div>
       <div class="status-card unknown" id="card-printers">
         <div class="sc-label">USB Printers</div>
         <div class="sc-value" id="val-printers">Checking...</div>
@@ -712,6 +717,29 @@
         <div class="cp-actions">
           <button class="btn btn-block" id="btn-block-storage" onclick="runAction('block-storage')">⊘ Block</button>
           <button class="btn btn-unblock" id="btn-unblock-storage" onclick="runAction('unblock-storage')">✓ Allow</button>
+        </div>
+      </div>
+
+      <!-- Phones / MTP / PTP Panel -->
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">📱</div>
+          <div>
+            <div class="cp-title">Phones &amp; Cameras</div>
+            <div class="cp-desc">WPD / MTP / PTP stack (L7)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">Android (MTP)</span>
+          <span class="scope-tag">iPhone / iTunes (PTP)</span>
+          <span class="scope-tag">Digital Cameras</span>
+          <span class="scope-tag">Media Players</span>
+          <span class="scope-tag excluded">USB Charging</span>
+          <span class="scope-tag excluded">Keyboards / Mice</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block" id="btn-block-phones" onclick="runAction('block-phones')">⊘ Block</button>
+          <button class="btn btn-unblock" id="btn-unblock-phones" onclick="runAction('unblock-phones')">✓ Allow</button>
         </div>
       </div>
 
@@ -893,7 +921,7 @@ function parseStatus(output) {
   try {
     var jsonMatch = output.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      var status = eval('(' + jsonMatch[0] + ')');
+      var status = JSON.parse(jsonMatch[0]);
       currentStatus = status;
       updateStatusUI(status);
     }
@@ -913,9 +941,9 @@ function updateStatusUI(status) {
   var apState = (status.AutoPlayKilled === 'disabled') ? 'blocked' : 'allowed';
   updateCard('card-autoplay',    'val-autoplay',    apState, {disabled:'KILLED', enabled:'LIVE'});
 
-  // VolumeWatcher: "running" = blocked/protected
+  // VolumeWatcher: "running" = active/protected; "not_installed" = watcher is off (warn, not green)
   var vwState = (status.VolumeWatcher === 'running' || status.VolumeWatcher === 'ready') ? 'blocked'
-              : (status.VolumeWatcher === 'not_installed') ? 'allowed' : 'unknown';
+              : (status.VolumeWatcher === 'not_installed') ? 'unknown' : 'unknown';
   updateCard('card-watcher', 'val-watcher', vwState, {running:'RUNNING', ready:'READY', not_installed:'OFF'});
 
   // MTP/PTP phones and cameras (L7)
@@ -926,6 +954,7 @@ function updateStatusUI(status) {
          ' | Write-block:' + (status.WriteProtect||'?') +
          ' | AutoPlay:' + (status.AutoPlayKilled||'?') +
          ' | Watcher:' + (status.VolumeWatcher||'?') +
+         ' | Phones/MTP:' + (status.MtpPtp||'?') +
          ' | Printers:' + (status.UsbPrinters||'?'), 'info');
 }
 
@@ -953,12 +982,14 @@ function runAction(action) {
   }
   
   var labels = {
-    'block':           'Blocking all devices...',
-    'unblock':         'Unblocking all devices...',
-    'block-storage':   'Blocking USB mass storage...',
-    'unblock-storage': 'Allowing USB mass storage...',
-    'block-printers':  'Blocking USB printers...',
-    'unblock-printers':'Allowing USB printers...'
+    'block':            'Blocking all devices...',
+    'unblock':          'Unblocking all devices...',
+    'block-storage':    'Blocking USB mass storage...',
+    'unblock-storage':  'Allowing USB mass storage...',
+    'block-phones':     'Blocking phones and cameras (MTP/PTP)...',
+    'unblock-phones':   'Allowing phones and cameras (MTP/PTP)...',
+    'block-printers':   'Blocking USB printers...',
+    'unblock-printers': 'Allowing USB printers...'
   };
   
   showLoading(labels[action] || 'Applying changes...');

@@ -13,6 +13,7 @@ param(
     [switch]$Unit,
     [switch]$Integration,
     [switch]$All,
+    [switch]$Syntax,
     [switch]$Coverage,
     [string]$Filter
 )
@@ -62,6 +63,26 @@ function Invoke-TestRun {
     
     $result = Invoke-Pester -Configuration $config
     return $result
+}
+
+# Syntax check (fast, no Pester required)
+if ($Syntax) {
+    Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    Write-Host "PowerShell Syntax Check" -ForegroundColor Cyan
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    $syntaxErrors = 0
+    foreach ($file in @("$testDir/USBGuard-Standalone/USBGuard.ps1", "$testDir/USBGuard-Standalone/USBGuard_Advanced.ps1")) {
+        $parseErrors = @()
+        [System.Management.Automation.PSParser]::Tokenize((Get-Content $file -Raw), [ref]$parseErrors) | Out-Null
+        if ($parseErrors.Count -gt 0) {
+            Write-Host "FAIL: $(Split-Path $file -Leaf)" -ForegroundColor Red
+            $parseErrors | ForEach-Object { Write-Host "  Line $($_.Token.StartLine): $($_.Message)" -ForegroundColor Red }
+            $syntaxErrors++
+        } else {
+            Write-Host "OK:   $(Split-Path $file -Leaf)" -ForegroundColor Green
+        }
+    }
+    exit $syntaxErrors
 }
 
 # Determine which tests to run
