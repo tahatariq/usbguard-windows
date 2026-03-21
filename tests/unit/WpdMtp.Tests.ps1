@@ -92,7 +92,7 @@ BeforeAll {
     }
 }
 
-Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
+Describe "WPD/MTP/PTP (Layer 7) - Status Detection and Block/Unblock" {
 
     BeforeAll {
         $testRegBase     = "HKLM:\SOFTWARE\USBGuard_WpdTest"
@@ -119,7 +119,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
     }
 
     Context "Get-WpdStatus_Test" {
-        It "Should return 'blocked' when GUID in deny list AND service Start=4" {
+        It "Should return blocked when GUID in deny list AND service Start=4" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
             Add-GuidToTestDenyList $denyClassesPath $GUID_WPD
@@ -127,7 +127,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "blocked"
         }
 
-        It "Should return 'partial' when GUID in deny list but service not disabled" {
+        It "Should return partial when GUID in deny list but service not disabled" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 3 -Type DWord
             Add-GuidToTestDenyList $denyClassesPath $GUID_WPD
@@ -135,7 +135,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "partial"
         }
 
-        It "Should return 'partial' when service Start=4 but GUID not in deny list" {
+        It "Should return partial when service Start=4 but GUID not in deny list" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
             New-Item $denyClassesPath -Force | Out-Null
@@ -143,14 +143,14 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "partial"
         }
 
-        It "Should return 'allowed' when GUID not in list and service not disabled" {
+        It "Should return allowed when GUID not in list and service not disabled" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 3 -Type DWord
 
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "allowed"
         }
 
-        It "Should return 'allowed' when neither path exists" {
+        It "Should return allowed when neither path exists" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "allowed"
         }
     }
@@ -195,7 +195,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             $saved | Should -Be 3
         }
 
-        It "Should be idempotent — blocking twice keeps Start=4 and saves original only once" {
+        It "Should be idempotent - blocking twice keeps Start=4 and saves original only once" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 3 -Type DWord
 
@@ -269,7 +269,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             $dc | Should -Be 0
         }
 
-        It "Block then Unblock roundtrip — status returns 'allowed' afterward" {
+        It "Block then Unblock roundtrip - status returns allowed afterward" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 3 -Type DWord
             $guids = @($GUID_WPD, $GUID_WPD_PRINT, $GUID_IMAGING)
