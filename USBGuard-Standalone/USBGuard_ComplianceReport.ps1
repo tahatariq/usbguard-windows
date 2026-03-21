@@ -77,7 +77,7 @@ function Get-AllowlistCount {
 
 # ── Console output ────────────────────────────────────────────────────────────
 function Write-ConsoleSummary {
-    param([ordered]$StatusMap, [string]$TamperStatus, [int]$AllowlistCount)
+    param($StatusMap, [string]$TamperStatus, [int]$AllowlistCount)
 
     Write-Host "`nUSBGuard Compliance Report" -ForegroundColor Cyan
     Write-Host "  Machine  : $env:COMPUTERNAME"
@@ -117,7 +117,7 @@ function Write-ConsoleSummary {
 
 # ── HTML report builder ───────────────────────────────────────────────────────
 function Build-HtmlReport {
-    param([ordered]$StatusMap, [string]$TamperStatus, [int]$AllowlistCount)
+    param($StatusMap, [string]$TamperStatus, [int]$AllowlistCount)
 
     $blocked = ($StatusMap.Values | Where-Object { $_ -eq "blocked" }).Count
     $total   = ($StatusMap.Values | Where-Object { $_ -ne "not_present" }).Count

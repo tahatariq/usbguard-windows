@@ -204,7 +204,7 @@ Describe "Build-HtmlReport_Test" {
     }
 
     It "Should show BLOCKED label in all-blocked report" {
-        ($htmlAll -split "BLOCKED").Count - 1 | Should -Be 7
+        ($htmlAll -csplit "BLOCKED").Count - 1 | Should -Be 7
     }
 
     It "Should show ALLOWED label for allowed layers in mixed report" {
