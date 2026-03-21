@@ -51,9 +51,16 @@ jobs:
           }
 
   pester-tests:
-    name: Pester Unit & Integration Tests
-    runs-on: windows-latest
+    # windows-2019 ≈ Windows 10 (PS 5.1, same registry behaviour)
+    # windows-2022 ≈ Windows 11 (PS 5.1, same registry behaviour)
+    # windows-latest = Windows Server 2025
+    name: Pester Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: syntax-check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019, windows-2022, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -96,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: test-results-*.xml
 
   publish-test-results:
@@ -112,7 +119,8 @@ jobs:
       - name: Download Test Results
         uses: actions/download-artifact@v4
         with:
-          name: test-results
+          pattern: test-results-*
+          merge-multiple: true
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

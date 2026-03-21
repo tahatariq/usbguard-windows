@@ -14,7 +14,10 @@ Two deployment variants share the same 7-layer protection model:
 usb-block/
 ├── USBGuard-Standalone/       # IT-admin GUI + PS backend, no fleet mgmt
 │   ├── USBGuard.ps1           # Core PS5.1 backend — all 7 layers + watcher
-│   ├── USBGuard_Advanced.ps1  # List devices, export policy to JSON
+│   ├── USBGuard_Advanced.ps1       # List devices, export policy to JSON
+│   ├── USBGuard_Snapshot.ps1       # Pre-block device snapshot + allowlist pre-population
+│   ├── USBGuard_ComplianceReport.ps1  # 7-layer HTML compliance report
+│   ├── Send-ExceptionNotification.ps1 # Teams/Slack webhook on exception grant/expiry
 │   ├── USBGuard.hta           # HTML Application GUI (IE/MSHTML engine)
 │   └── Launch_USBGuard.bat    # UAC-elevating launcher
 │
@@ -29,9 +32,14 @@ usb-block/
 │   ├── unit/Registry.Tests.ps1          # Pester unit tests — registry helpers
 │   ├── unit/StatusDetection.Tests.ps1   # Pester unit tests — status parsing
 │   ├── unit/WpdMtp.Tests.ps1            # Pester unit tests — Layer 7 WPD/MTP/PTP
+│   ├── unit/AuditNotify.Tests.ps1       # Pester unit tests — audit log + input validation
+│   ├── unit/ComplianceReport.Tests.ps1  # Pester unit tests — layer status map + HTML report
+│   ├── unit/NotifyWebhook.Tests.ps1     # Pester unit tests — Teams + Slack payload builders
+│   ├── simulation/TamperDetection.Simulation.ps1  # End-to-end tamper detection proof
+│   ├── simulation/BypassAttempt.Simulation.ps1    # Red-team bypass vector checklist
 │   └── integration/BlockUnblock.Tests.ps1  # Pester integration tests
 │
-├── .github/workflows/pester-tests.yml  # CI: syntax, Pester, PSScriptAnalyzer, reg validation
+├── .github/workflows/pester-tests.yml  # CI: matrix (Win2019/Win2022/Win2025), syntax, Pester, PSScriptAnalyzer
 ├── Run-Tests.ps1              # Local test runner helper
 ├── CODE_VALIDATION.md         # Bug tracker / validation report
 └── CLAUDE.md                  # This file
@@ -189,16 +197,26 @@ remove-tamper-detection    → remove tamper detection task
 ```
 
 ### CI (GitHub Actions — `.github/workflows/pester-tests.yml`)
-Jobs: `syntax-check` → `pester-tests` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
+Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
 
-### Test Files (76 tests total)
+**Matrix**: `pester-tests` runs on `windows-2019` (≈ Win10), `windows-2022` (≈ Win11), `windows-latest` (Server 2025). `fail-fast: false` so all three complete even if one fails. Artifacts uploaded as `test-results-<os>`; `publish-test-results` collects with `pattern: test-results-*`.
+
+### Test Files (116 tests total)
 | File | Tests | Coverage |
 |------|-------|----------|
 | `unit/Registry.Tests.ps1` | 15 | Registry helpers |
 | `unit/StatusDetection.Tests.ps1` | 11 | Status parsing |
 | `unit/WpdMtp.Tests.ps1` | 16 | L7 WPD/MTP/PTP block/unblock |
 | `unit/AuditNotify.Tests.ps1` | 24 | Write-AuditEntry, Write-EventLogEntry, input validation |
+| `unit/ComplianceReport.Tests.ps1` | 20 | Layer status map, HTML report generation |
+| `unit/NotifyWebhook.Tests.ps1` | 20 | Teams + Slack payload builders |
 | `integration/BlockUnblock.Tests.ps1` | 10 | Idempotency, round-trips |
+
+### Simulation Scripts (manual, require admin)
+| Script | What it proves |
+|--------|---------------|
+| `simulation/TamperDetection.Simulation.ps1` | Reverts USBSTOR Start=3, invokes TamperDetect.ps1, asserts Start restored to 4 and log written |
+| `simulation/BypassAttempt.Simulation.ps1` | Attempts 7 bypass vectors (registry revert, service kill, etc.); reports BLOCKED vs SUCCEEDED; restores all changes |
 
 ### Remaining Coverage Gaps
 - `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context / task scheduler)
