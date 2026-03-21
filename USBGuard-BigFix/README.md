@@ -1,137 +1,234 @@
-# USBGuard — BigFix Deployment Package (v4)
+# USBGuard — BigFix Fleet Deployment Guide
 
-## Overview
-
-Fleet deployment package for HCL BigFix (formerly IBM BigFix). The BESClient service runs as SYSTEM, so all registry and service operations are privileged and cannot be interrupted by end users during execution.
-
-This package extends the Standalone package with two critical additions:
-- **Registry DENY ACLs (Fixlet 3)** — even local administrators cannot modify the protected keys; only SYSTEM (BigFix) can
-- **Continuous compliance enforcement (Fixlet 5 + Baseline)** — BigFix auto-remediates any tampered machine within the next check cycle
+Step-by-step guide to deploying USBGuard across a managed fleet using HCL BigFix. This package provides registry-level tamper protection, continuous auto-remediation, auditable exception workflows, and per-layer compliance reporting in Web Reports.
 
 ---
 
-## Files
+## Before You Start
 
-| File | Purpose |
-|------|---------|
-| `Fixlet1_ApplyPolicy.bes` | Applies all 7 protection layers (registry + service + WPD/MTP/PTP) |
-| `Fixlet2_DeployWatcher.bes` | Deploys VolumeWatcher.ps1 to ProgramData, registers SYSTEM Scheduled Task |
-| `Fixlet3_LockACLs.bes` | Applies DENY ACEs to all protected registry keys + ProgramData folder |
-| `Fixlet4_Unblock.bes` | Strips DENY ACEs, then clears all 7 layers (for targeted exceptions) |
-| `Fixlet5_ComplianceDetection.bes` | Relevance-only audit fixlet + Analysis Property expressions for Web Reports |
+**What you need:**
+- HCL BigFix / IBM BigFix 9.5 or later
+- BigFix Console access with operator permissions to deploy fixlets
+- BESClient running as LocalSystem on endpoints (the default installation)
+- Endpoints running Windows 10 (21H2+) or Windows 11
 
----
-
-## Protection Layers (v4)
-
-| Layer | Mechanism | What it blocks | User undo? | Admin undo? | BigFix only? |
-|-------|-----------|----------------|:---:|:---:|:---:|
-| L1 | `USBSTOR Start=4` | Flash drives, external HDDs, USB-C drives | No | No* | Yes* |
-| L2 | `WriteProtect=1` | Any write to removable storage | No | No* | Yes* |
-| L3 | `DenyDeviceClasses` (GUIDs) | Disk, CD-ROM, floppy, printer classes | No | No* | Yes* |
-| L4 | AutoPlay killed + ShellHWDetection stopped | AutoPlay popup window | No | No* | Yes* |
-| L5 | VolumeWatcher Scheduled Task (SYSTEM) | Auto-ejects within ~1s of mount | No | View only | Yes |
-| L6 | `thunderbolt Start=4` | Thunderbolt external drives | No | No* | Yes* |
-| L7 | WPD services + MTP/PTP/Imaging GUIDs | Android MTP, iPhone/iTunes PTP, cameras | No | No* | Yes* |
-| ACL | DENY ACEs on all registry keys | Prevents modification of any above key | No | No | Yes (Fixlet 4) |
-
-*After Fixlet 3 applies DENY ACEs. Without Fixlet 3, a local admin could revert via regedit.
-
-**DENY ACE behaviour:** A DENY ACE overrides ALLOW for all accounts including Administrators. Opening regedit shows the key exists but any modification returns "Access Denied". The only account exempt from a DENY ACE is the account that owns the ACL — which is SYSTEM.
+**Key difference from Standalone:**
+The BigFix package runs as SYSTEM and applies DENY ACEs to all protected registry keys. This means even a local Administrator cannot revert the policy via regedit — only SYSTEM (i.e. BigFix itself) can modify the protected keys. A local admin opening regedit will see the keys exist but receive "Access Denied" on any modification attempt.
 
 ---
 
-## What Gets Blocked vs. Allowed
+## Fixlet Overview
 
-| Device / Connection | Blocked? |
-|---|:-:|
-| USB flash drive (2.0 / 3.x) | ✅ |
-| USB external hard drive | ✅ |
-| USB-C external storage | ✅ |
-| Thunderbolt drive | ✅ |
-| USB CD/DVD drive | ✅ |
-| USB printer | ✅ |
-| Android phone — File Transfer (MTP) | ✅ L7 |
-| iPhone — iTunes file sync / backup | ✅ L7 |
-| iPhone — Windows Photos import (PTP) | ✅ L7 |
-| USB camera (PTP/MTP) | ✅ L7 |
-| USB keyboard / mouse | ❌ Never blocked |
-| USB headset / audio | ❌ Never blocked |
-| USB charging (any device) | ❌ Never blocked |
-| Network drives / cloud apps | ❌ Out of scope (network layer) |
+| Fixlet | Purpose | Run order |
+|--------|---------|-----------|
+| `Fixlet1_ApplyPolicy.bes` | Applies all 7 protection layers | 1st |
+| `Fixlet2_DeployWatcher.bes` | Deploys Volume Watcher scheduled task | 2nd |
+| `Fixlet3_LockACLs.bes` | Applies DENY ACEs to all protected registry keys | 3rd (always last) |
+| `Fixlet4_Unblock.bes` | Grants a temporary exception on a specific machine | On demand only |
+| `Fixlet5_ComplianceDetection.bes` | Audit fixlet + Analysis Properties for Web Reports | Ongoing |
+
+> **Critical ordering:** Fixlet 3 must always run after Fixlet 1. Fixlet 3 locks the values that Fixlet 1 wrote. Running Fixlet 3 before Fixlet 1 will lock keys in an unblocked state.
 
 ---
 
-## Deployment Order
+## Step 1 — Import the Fixlets
 
-```
-Fixlet 1  →  Fixlet 2  →  Fixlet 3
- (policy)    (watcher)    (lock ACLs)
-```
+1. Open **BigFix Console**
+2. Go to **File → Import** (or drag and drop)
+3. Import each `.bes` file in order:
+   - `Fixlet1_ApplyPolicy.bes`
+   - `Fixlet2_DeployWatcher.bes`
+   - `Fixlet3_LockACLs.bes`
+   - `Fixlet4_Unblock.bes`
+   - `Fixlet5_ComplianceDetection.bes`
+4. They will appear under **Fixlets** in the console tree
 
-All three should be deployed together. Fixlet 3 must run after Fixlet 1 — it locks the values Fixlet 1 just wrote.
+---
 
-### Recommended Baseline Setup
+## Step 2 — Initial Deployment to Endpoints
 
-1. Create a new **Baseline** in BigFix Console
-2. Add **Fixlet 1** — relevance: any layer is missing or wrong value
-3. Add **Fixlet 2** — relevance: watcher task not present
-4. Add **Fixlet 3** — relevance: always (after policy is confirmed applied)
-5. Set Baseline schedule: **every 4 hours**
-6. Deploy **Fixlet 5** as an Analysis to populate Web Reports with per-layer compliance data
+Deploy the fixlets **individually in order** to a test group first, then to all endpoints.
 
-This means: if someone boots to WinPE, edits the registry offline, and reboots, BigFix re-applies all layers within 4 hours of the next agent check-in.
+### 2a — Apply the Protection Policy (Fixlet 1)
+
+1. In BigFix Console, locate `USBGuard - Apply USB Block Policy`
+2. Right-click → **Take Action**
+3. Target: your test group or "All Windows Computers" for full deployment
+4. Click **OK**
+5. Wait for the action to complete on all targeted machines (check the **Action** tab for status)
+
+Fixlet 1 does the following on each endpoint:
+- Saves the original WPD service Start values (used later for clean unblock)
+- Sets USBSTOR `Start=4` (L1)
+- Sets `WriteProtect=1` (L2)
+- Adds device class deny GUIDs for disk, CD-ROM, floppy, printer, WPD, PTP (L3)
+- Sets `NoDriveTypeAutoRun=255` and stops ShellHWDetection (L4)
+- Disables Thunderbolt service (L6)
+- Disables WPD driver stack services (L7)
+
+### 2b — Deploy the Volume Watcher (Fixlet 2)
+
+1. Locate `USBGuard - Deploy Volume Watcher`
+2. Right-click → **Take Action**
+3. Same targeting as Fixlet 1
+4. This installs a SYSTEM scheduled task that auto-ejects any USB volume within ~1 second of mount
+
+> **Note:** The Volume Watcher runs as SYSTEM. It dispatches user toast notifications via a temporary per-user scheduled task to avoid SYSTEM→desktop UI injection issues.
+
+### 2c — Lock the Registry (Fixlet 3)
+
+1. Locate `USBGuard - Lock Registry ACLs`
+2. Right-click → **Take Action**
+3. Same targeting as Fixlets 1 and 2
+4. Wait for completion — after this, no local admin can revert the policy via regedit
+
+> Only deploy Fixlet 3 after confirming Fixlet 1 has succeeded on the target machines. Check the Action status tab before proceeding.
+
+---
+
+## Step 3 — Set Up a Baseline for Auto-Remediation
+
+A Baseline re-applies all three fixlets on a schedule. If a machine is offline when you first deploy, or if someone manages to revert the policy (e.g. by booting to WinPE and editing the registry offline), the Baseline will re-apply everything at the next check-in.
+
+1. In BigFix Console, go to **Baselines** → right-click → **New Baseline**
+2. Name it: `USBGuard - USB Block Policy`
+3. Add the following components in order:
+   - `USBGuard - Apply USB Block Policy` (Fixlet 1)
+   - `USBGuard - Deploy Volume Watcher` (Fixlet 2)
+   - `USBGuard - Lock Registry ACLs` (Fixlet 3)
+4. Set the relevance for each component to re-run when the policy is not in the expected state (the fixlets include relevance expressions for this)
+5. Set the Baseline schedule: **Every 4 hours** (recommended) or at minimum every 8 hours
+6. Deploy the Baseline to all endpoints
+
+After this, any machine that drifts out of compliance will be automatically remediated within 4 hours of its next BigFix agent check-in.
+
+---
+
+## Step 4 — Enable Compliance Reporting (Fixlet 5)
+
+Fixlet 5 contains no action — it is an audit-only fixlet that provides Analysis Properties for Web Reports.
+
+1. Locate `USBGuard - Compliance Detection`
+2. Right-click → **Activate as Analysis**
+3. In the Analysis dialog, confirm the properties:
+   - `USBGuard_L1_USBSTOR` — BLOCKED / OPEN / KEY_MISSING
+   - `USBGuard_L2_WriteProtect` — ACTIVE / INACTIVE
+   - `USBGuard_L3_DenyClasses` — ENFORCED / OFF
+   - `USBGuard_L4_AutoPlay` — KILLED / LIVE
+   - `USBGuard_L5_Watcher` — INSTALLED / MISSING
+   - `USBGuard_L6_Thunderbolt` — BLOCKED / OPEN / NOT_PRESENT
+   - `USBGuard_L7_WPD_MTP` — BLOCKED / OPEN / NOT_PRESENT
+   - `USBGuard_Overall` — **COMPLIANT** / **NON-COMPLIANT**
+4. Click **OK** — BigFix will now collect these values from every managed endpoint
+
+To view results:
+- **BigFix Console:** Select any computer → **Properties** tab → scroll to USBGuard properties
+- **Web Reports:** Create a report using the `USBGuard_Overall` property to see a fleet-wide compliance dashboard
+
+> `USBGuard_L6_Thunderbolt` returns `NOT_PRESENT` on machines without Thunderbolt hardware. These machines are not counted as non-compliant in `USBGuard_Overall`.
 
 ---
 
 ## Granting a Temporary Exception
 
-To give a specific machine temporary USB access:
+To allow a specific user on a specific machine to use USB storage temporarily:
 
-1. BigFix Console → Fixlets → `USBGuard - Remove USB Block Policy` **(Fixlet 4)**
-2. **Target: specific computer(s) only** — never target all endpoints
-3. Take Action — BigFix strips DENY ACEs first, then clears all 7 layers
-4. After the exception window ends, re-target with Fixlets 1 + 2 + 3
+### Step-by-step
 
-BigFix's built-in audit trail records who initiated the exception action and when. Use this for compliance auditing.
+1. BigFix Console → locate `USBGuard - Remove USB Block Policy` **(Fixlet 4)**
+2. Right-click → **Take Action**
+3. **Target: specific computer(s) only** — double-check you are not targeting all endpoints
+4. Click **OK**
+
+Fixlet 4 does the following:
+- Strips all DENY ACEs from the protected registry keys (this must happen first — without this step, even SYSTEM cannot modify the keys)
+- Restores USBSTOR, WriteProtect, AutoPlay, Thunderbolt, and WPD services to their original values
+- Removes the Volume Watcher scheduled task
+- Creates an **automatic re-apply task** (`USBGuard_ExceptionExpiry`) that fires **8 hours later**, re-applies L1/L2/L4/L7 and then deletes itself
+
+### After the exception window
+
+If you want to re-apply policy manually before the 8-hour timer:
+1. Re-run **Fixlet 1** targeted at that machine
+2. Re-run **Fixlet 2** targeted at that machine
+3. Re-run **Fixlet 3** targeted at that machine
+
+The Baseline will also catch it at the next 4-hour cycle.
+
+### Sending a notification to your team (optional)
+
+Before or after running Fixlet 4, you can notify your security team via a webhook using `Send-ExceptionNotification.ps1` from the Standalone package:
+
+```powershell
+# Teams notification
+.\Send-ExceptionNotification.ps1 `
+    -WebhookUrl   "https://your-org.webhook.office.com/..." `
+    -MachineName  "LAPTOP-JSMITH" `
+    -GrantedBy    "IT Helpdesk" `
+    -ExpiryHours  8 `
+    -Platform     Teams
+
+# Slack notification
+.\Send-ExceptionNotification.ps1 `
+    -WebhookUrl   "https://hooks.slack.com/services/..." `
+    -MachineName  "LAPTOP-JSMITH" `
+    -GrantedBy    "IT Helpdesk" `
+    -ExpiryHours  8 `
+    -Platform     Slack
+```
+
+BigFix's built-in audit trail (under the Action history) records who initiated Fixlet 4 and when, providing a permanent compliance record of every exception granted.
 
 ---
 
-## User Notification
+## Verifying Deployment
 
-Notifications are **not included** in the BigFix package. SYSTEM cannot show desktop UI directly, and the extra dispatch complexity was removed given that registry ACL protection makes the policy robust without it.
+After the Baseline has run across your fleet, verify the rollout:
 
-Two options if you want users informed:
+1. In BigFix Console, select a target computer
+2. Go to the **Properties** tab
+3. Look for the `USBGuard_Overall` Analysis Property — it should show `COMPLIANT`
+4. Check individual layer properties if needed
 
-**Option A — BigFix Client UI** (if the Client UI component is deployed):
+To verify on a specific endpoint directly (requires admin PowerShell on that machine):
+
+```powershell
+# From the USBGuard-Standalone folder on the endpoint
+.\USBGuard_ComplianceReport.ps1 -NoHtml
+```
+
+---
+
+## Understanding DENY ACEs (Tamper Protection)
+
+After Fixlet 3 runs, the protected registry keys have a DENY ACE applied for the `Administrators` group. This means:
+
+- A local admin opening `regedit.exe` can **view** the keys but **cannot modify** them
+- Scripts running as Administrator receive "Access Denied" on any write attempt
+- Only SYSTEM (the BigFix BESClient service account) can modify the keys
+- This protection survives reboots and local admin group changes
+
+**The only way to remove it is:**
+1. Run Fixlet 4 as SYSTEM via BigFix (which strips the DENY ACEs before making any changes)
+2. Boot to WinPE/external OS and edit the registry offline (which BigFix will re-apply at next check-in)
+
+---
+
+## User Notifications
+
+The BigFix package does not include user notifications by default (SYSTEM cannot show desktop UI directly). Two options:
+
+**Option A — BigFix Client UI** (if the BigFix Client UI component is deployed on endpoints):
 ```
 client notify "USB Device Blocked" "USB storage and phone data access is disabled by IT Security policy. Contact the helpdesk at ext 1234 for temporary access."
 ```
-This fires in the user's session via the BigFix tray agent.
 
-**Option B — GPO logon script**: Deploy a logon script that checks `HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR\Start` and shows a balloon notification if the value is 4. Runs in user context at login — no SYSTEM/UI conflict.
-
----
-
-## Compliance Reporting (Fixlet 5)
-
-Fixlet 5 contains no action — only relevance and Analysis Property expressions. Add these as individual Analysis Properties in BigFix Console to get per-layer status for every managed endpoint in Web Reports or a custom Dashboard.
-
-Properties included:
-- `USBGuard_L1_USBSTOR` — BLOCKED / OPEN / KEY_MISSING
-- `USBGuard_L2_WriteProtect` — ACTIVE / INACTIVE
-- `USBGuard_L3_DenyClasses` — ENFORCED / OFF
-- `USBGuard_L4_AutoPlay` — KILLED / LIVE
-- `USBGuard_L5_Watcher` — INSTALLED / MISSING
-- `USBGuard_L6_Thunderbolt` — BLOCKED / OPEN / NOT_PRESENT
-- `USBGuard_L7_WPD_MTP` — BLOCKED / OPEN / NOT_PRESENT
-- `USBGuard_Overall` — **COMPLIANT** / **NON-COMPLIANT**
-
-> **Note:** `USBGuard_L6_Thunderbolt` returns `NOT_PRESENT` on machines without Thunderbolt hardware — these machines are not penalised in `USBGuard_Overall`.
+**Option B — GPO logon script:**
+Deploy a Group Policy logon script that runs in the user context, checks `HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR\Start`, and shows a balloon or toast notification if the value is 4. This runs as the logged-in user so there is no SYSTEM→desktop session conflict.
 
 ---
 
-## Key Registry Paths (reference / troubleshooting)
+## Key Registry Paths (Reference / Troubleshooting)
 
 ```
 HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR
@@ -151,38 +248,38 @@ HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions
   DenyDeviceClasses\6 = {6BDD1FC6-810F-11D0-BEC7-08002BE2092F}  (PTP/Still Image)
 
 HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
-  NoDriveTypeAutoRun = 255
+  NoDriveTypeAutoRun = 255 (0xFF)
 
-HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver   Start = 4
-HKLM\SYSTEM\CurrentControlSet\Services\WUDFRd                Start = 4
-HKLM\SYSTEM\CurrentControlSet\Services\WpdUpFltr             Start = 4
-HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt           Start = 4
+HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver  Start = 4
+HKLM\SYSTEM\CurrentControlSet\Services\WUDFRd               Start = 4
+HKLM\SYSTEM\CurrentControlSet\Services\WpdUpFltr            Start = 4
+HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt          Start = 4
 
 HKLM\SOFTWARE\USBGuard\SavedStart\*
-  (Original WPD service Start values saved by Fixlet 1, restored by Fixlet 4)
+  (Original WPD service Start values saved by Fixlet 1 — used by Fixlet 4 to restore cleanly)
 ```
 
 ---
 
-## Requirements
+## Troubleshooting
 
-- HCL BigFix / IBM BigFix 9.5+
-- BESClient running as LocalSystem (default)
-- Windows 10 (21H2+) or Windows 11 endpoints
-- PowerShell 5.1+ on endpoints (built into Windows)
+**Fixlet 1 shows "Not Relevant" on some machines**
+- The machine may already be fully compliant (policy already applied). Check the `USBGuard_Overall` Analysis Property.
+- If the machine has never had USBGuard applied, check that the BESClient service is running as LocalSystem.
 
----
+**Fixlet 3 fails with "Access Denied"**
+- Fixlet 3 must run as SYSTEM via BigFix. Ensure `action uses wow64 redirection false` is set in the fixlet (it is, by default). Do not attempt to run it manually from a non-SYSTEM context.
 
-## Comparison: Standalone vs. BigFix
+**Fixlet 4 fails — cannot strip DENY ACEs**
+- Only SYSTEM can remove DENY ACEs applied by Fixlet 3. Fixlet 4 runs as SYSTEM via BigFix and handles this automatically. If Fixlet 4 fails, check that BESClient is running as LocalSystem (not a standard service account).
 
-| Feature | Standalone | BigFix |
-|---------|:----------:|:------:|
-| GUI for IT admin use | ✅ HTA | ❌ Not needed |
-| 7-layer USB protection | ✅ | ✅ |
-| MTP/PTP blocking (L7) | ✅ | ✅ |
-| User toast notification | ✅ | ❌ (use Client UI or GPO) |
-| Registry DENY ACL protection | ❌ | ✅ Fixlet 3 |
-| Auto-remediation on tamper | ❌ | ✅ Baseline |
-| Fleet compliance reporting | ❌ | ✅ Analysis Properties |
-| Temporary exception workflow | Manual | ✅ Fixlet 4 + audit trail |
-| Works without network | ✅ | ❌ Needs BigFix agent |
+**Machine shows NON-COMPLIANT in Web Reports after Baseline ran**
+- Check the individual layer properties to identify which layer is missing.
+- Check the BigFix Action history for errors on that machine.
+- If the machine was offline during Baseline execution, it will be remediated at the next check-in.
+
+**Thunderbolt shows NOT_PRESENT on a machine**
+- This is expected for machines without Thunderbolt hardware. The service key does not exist. `USBGuard_Overall` does not penalise machines for this.
+
+**After Fixlet 4, the machine still shows blocked**
+- Fixlet 4 clears the registry values and removes the watcher task. A reboot may be required for the WPD driver stack (L7) to reload. The `USBGuard_ExceptionExpiry` scheduled task will re-apply policy after 8 hours regardless.
