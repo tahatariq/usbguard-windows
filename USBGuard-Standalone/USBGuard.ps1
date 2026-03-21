@@ -260,7 +260,9 @@ function Get-WpdStatus {
         $v = (Get-ItemProperty $svcPath -Name "Start" -EA SilentlyContinue).Start
         $svcDisabled = ($v -eq 4)
     }
-    return if ($guidBlocked -and $svcDisabled) { "blocked" } elseif ($guidBlocked -or $svcDisabled) { "partial" } else { "allowed" }
+    if ($guidBlocked -and $svcDisabled) { return "blocked" }
+    if ($guidBlocked -or $svcDisabled)  { return "partial" }
+    return "allowed"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
