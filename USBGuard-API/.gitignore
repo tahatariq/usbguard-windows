@@ -1,0 +1,24 @@
+# appsettings.json contains secrets (BigFix credentials, API keys) — never commit it.
+# Copy appsettings.example.json, fill in real values, and save as appsettings.json on the server.
+appsettings.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Runtime logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/

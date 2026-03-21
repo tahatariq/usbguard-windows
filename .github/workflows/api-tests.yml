@@ -1,0 +1,65 @@
+name: USBGuard API Tests
+
+on:
+  push:
+    paths:
+      - 'USBGuard-API/**'
+      - '.github/workflows/api-tests.yml'
+  pull_request:
+    paths:
+      - 'USBGuard-API/**'
+      - '.github/workflows/api-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: USBGuard-API
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: USBGuard-API/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov
+
+      # appsettings.json is excluded from git (contains secrets).
+      # The tests mock BigFix entirely, so only the file needs to exist.
+      - name: Create stub appsettings.json for tests
+        run: |
+          echo '{
+            "bigfix_server": "test.local",
+            "bigfix_port": 52311,
+            "bigfix_username": "admin",
+            "bigfix_password": "test",
+            "api_keys": ["ci-test-key"]
+          }' > appsettings.json
+
+      - name: Run tests
+        run: python3 -m pytest tests/ -v --tb=short --junitxml=test-results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-test-results
+          path: USBGuard-API/test-results.xml
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: API Test Results
+          path: USBGuard-API/test-results.xml
+          reporter: java-junit
+          fail-on-error: true

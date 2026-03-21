@@ -39,7 +39,27 @@ usb-block/
 │   ├── simulation/BypassAttempt.Simulation.ps1    # Red-team bypass vector checklist
 │   └── integration/BlockUnblock.Tests.ps1  # Pester integration tests
 │
+├── USBGuard-API/              # Python/FastAPI REST API — BigFix exception management over HTTP
+│   ├── app/
+│   │   ├── main.py            # FastAPI app, routes, lifespan
+│   │   ├── bigfix.py          # BigFix REST API client (action deploy, status query, scheduling)
+│   │   ├── date_parser.py     # Flexible date parsing (13 formats, past-date correction)
+│   │   ├── models.py          # Pydantic v2 request/response models
+│   │   ├── auth.py            # API key middleware (X-API-Key header)
+│   │   └── config.py          # Settings loaded from appsettings.json
+│   ├── tests/
+│   │   ├── test_api.py        # 17 API integration tests (TestClient + mocked BigFix)
+│   │   ├── test_date_parser.py # 18 date parsing tests
+│   │   ├── test_models.py     # 12 Pydantic validation tests
+│   │   └── test_bigfix.py     # 14 scheduling offset + encoding tests
+│   ├── appsettings.example.json   # Template — copy to appsettings.json and fill in secrets
+│   ├── generate_api_key.py    # Generates a secure random API key, prints rotation instructions
+│   ├── requirements.txt
+│   ├── web.config             # IIS HttpPlatformHandler config (proxies to uvicorn)
+│   └── README.md              # Deployment guide, API reference, scheduling/expiry explanation
+│
 ├── .github/workflows/pester-tests.yml  # CI: matrix (Win2022/Win2025), syntax, Pester, PSScriptAnalyzer
+├── .github/workflows/api-tests.yml     # CI: Python 3.12, pytest, runs on path changes to USBGuard-API/
 ├── Run-Tests.ps1              # Local test runner helper
 ├── CODE_VALIDATION.md         # Bug tracker / validation report
 └── CLAUDE.md                  # This file
@@ -196,10 +216,14 @@ remove-tamper-detection    → remove tamper detection task
 .\Run-Tests.ps1 -Syntax      # PS syntax check only
 ```
 
-### CI (GitHub Actions — `.github/workflows/pester-tests.yml`)
-Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
+### CI (GitHub Actions)
 
+**`.github/workflows/pester-tests.yml`** — PowerShell/Pester tests
+Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
 **Matrix**: `pester-tests` runs on `windows-2022` (≈ Win10/11) and `windows-latest` (Server 2025). `fail-fast: false` so both complete even if one fails. Artifacts uploaded as `test-results-<os>`; `publish-test-results` collects with `pattern: test-results-*`. Note: `windows-2019` was dropped — GitHub deprecated those runners in early 2026.
+
+**`.github/workflows/api-tests.yml`** — Python/FastAPI tests
+Runs on `ubuntu-latest` when anything under `USBGuard-API/` changes. Creates a stub `appsettings.json` (secrets mocked in tests — no real BigFix needed). Publishes JUnit results via `dorny/test-reporter`.
 
 ### Test Files (116 tests total)
 | File | Tests | Coverage |
