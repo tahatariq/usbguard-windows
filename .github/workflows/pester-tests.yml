@@ -51,16 +51,16 @@ jobs:
           }
 
   pester-tests:
-    # windows-2019 ≈ Windows 10 (PS 5.1, same registry behaviour)
-    # windows-2022 ≈ Windows 11 (PS 5.1, same registry behaviour)
+    # windows-2022 ≈ Windows 10/11 (PS 5.1, same registry behaviour)
     # windows-latest = Windows Server 2025
+    # Note: windows-2019 was removed — GitHub deprecated those runners in early 2026
     name: Pester Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: syntax-check
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2019, windows-2022, windows-latest]
+        os: [windows-2022, windows-latest]
     steps:
       - uses: actions/checkout@v4
 

@@ -199,7 +199,7 @@ remove-tamper-detection    → remove tamper detection task
 ### CI (GitHub Actions — `.github/workflows/pester-tests.yml`)
 Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-validation` → `documentation-check` → `summary`
 
-**Matrix**: `pester-tests` runs on `windows-2019` (≈ Win10), `windows-2022` (≈ Win11), `windows-latest` (Server 2025). `fail-fast: false` so all three complete even if one fails. Artifacts uploaded as `test-results-<os>`; `publish-test-results` collects with `pattern: test-results-*`.
+**Matrix**: `pester-tests` runs on `windows-2022` (≈ Win10/11) and `windows-latest` (Server 2025). `fail-fast: false` so both complete even if one fails. Artifacts uploaded as `test-results-<os>`; `publish-test-results` collects with `pattern: test-results-*`. Note: `windows-2019` was dropped — GitHub deprecated those runners in early 2026.
 
 ### Test Files (116 tests total)
 | File | Tests | Coverage |
