@@ -538,7 +538,7 @@
   .log-entry .ts { color: var(--dim); }
   .log-entry .msg { color: var(--text); }
   .log-entry.success .msg { color: var(--safe); }
-  .log-entry.error .msg { color: var (--danger); }
+  .log-entry.error .msg { color: var(--danger); }
   .log-entry.warn .msg { color: var(--warn); }
   .log-entry.info .msg { color: var(--accent); }
 
@@ -1018,12 +1018,16 @@ function checkAdminAndStatus() {
 
 function refreshStatus() {
   addLog('Querying system status...', 'info');
-  try {
-    var output = RunPS('-Action status');
-    parseStatus(output);
-  } catch(e) {
-    addLog('Status check failed: ' + e.message, 'error');
-  }
+  showLoading('Querying status...');
+  window.setTimeout(function() {
+    try {
+      var output = RunPS('-Action status');
+      parseStatus(output);
+    } catch(e) {
+      addLog('Status check failed: ' + e.message, 'error');
+    }
+    hideLoading();
+  }, 100);
 }
 
 function parseStatus(output) {
@@ -1177,7 +1181,13 @@ function addLog(msg, type) {
 
 
 function refreshAllowlist(silent) {
-  var out = RunPS("-Action list-allowlist");
+  var out = '';
+  try {
+    out = RunPS("-Action list-allowlist");
+  } catch(runErr) {
+    if (!silent) { addLog("Allowlist refresh failed: " + runErr.message, "warn"); }
+    return;
+  }
   var el  = document.getElementById("alEntries");
   if (!el) return;
   try {
@@ -1187,7 +1197,10 @@ function refreshAllowlist(silent) {
     if (typeof entries === "string") { entries = [entries]; }
     if (!Array.isArray(entries))     { entries = (entries && entries.value) ? entries.value : []; }
     renderAllowlist(entries, el);
-  } catch(ex) { renderAllowlist([], el); }
+  } catch(ex) {
+    if (!silent) { addLog("Allowlist parse error: " + ex.message, "warn"); }
+    renderAllowlist([], el);
+  }
 }
 
 function renderAllowlist(entries, el) {
@@ -1206,11 +1219,20 @@ function renderAllowlist(entries, el) {
   el.innerHTML = html;
 }
 
+function isValidPnpId(s) {
+  // PNP Device IDs contain only safe characters — no shell metacharacters
+  return /^[A-Za-z0-9_\-\\&\.\{\}@#]{1,200}$/.test(s);
+}
+
 function addAllowlistEntry() {
   var inp = document.getElementById("alInput");
   var val = inp ? inp.value.trim() : "";
   if (!val) { return; }
   if (!isAdmin) { addLog("Administrator privileges required", "error"); return; }
+  if (!isValidPnpId(val)) {
+    addLog("Invalid Device ID: only alphanumeric, backslash, ampersand, dot, braces allowed (max 200 chars)", "error");
+    return;
+  }
   RunPS("-Action add-allowlist -DeviceId \"" + val + "\"");
   inp.value = "";
   refreshAllowlist(false);
@@ -1219,6 +1241,10 @@ function addAllowlistEntry() {
 
 function removeAllowlistEntry(deviceId) {
   if (!isAdmin) { addLog("Administrator privileges required", "error"); return; }
+  if (!isValidPnpId(deviceId)) {
+    addLog("Invalid Device ID — cannot remove", "error");
+    return;
+  }
   RunPS("-Action remove-allowlist -DeviceId \"" + deviceId + "\"");
   refreshAllowlist(false);
   addLog("Allowlist: removed " + deviceId, "warn");

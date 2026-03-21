@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USBGuard ADML Language File (en-US)
+  Provides display strings and presentation elements for USBGuard.admx.
+
+  Copy to %SystemRoot%\PolicyDefinitions\en-US\
+-->
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                           revision="1.0"
+                           schemaVersion="1.0"
+                           xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+
+  <displayName>USBGuard</displayName>
+  <description>Enterprise USB device management and lockdown settings.</description>
+
+  <resources>
+    <stringTable>
+
+      <!-- Categories -->
+      <string id="Cat_USBGuard">USBGuard</string>
+      <string id="Cat_Layers">Protection Layers</string>
+      <string id="Cat_Notifications">Notifications</string>
+      <string id="Cat_Allowlist">Device Allowlist</string>
+
+      <!-- Layer 1 -->
+      <string id="L1_USBSTOR">L1: Block USB Mass Storage (USBSTOR)</string>
+      <string id="L1_USBSTOR_Help">Disables the USBSTOR driver (Start=4) to prevent Windows from recognizing USB flash drives, external hard drives, and USB-C storage devices.
+
+Enabled = USBSTOR blocked (Start=4)
+Disabled = USBSTOR allowed (Start=3)
+Not Configured = No change (existing state preserved)</string>
+
+      <!-- Layer 2 -->
+      <string id="L2_WriteProtect">L2: Enable Storage Write Protection</string>
+      <string id="L2_WriteProtect_Help">Sets StorageDevicePolicies WriteProtect=1 to enforce read-only access on any removable storage that manages to mount. Acts as a forensic write-block safety net.
+
+Enabled = Write protection on (WriteProtect=1)
+Disabled = Write protection off (WriteProtect=0)
+Not Configured = No change</string>
+
+      <!-- Layer 3 -->
+      <string id="L3_DenyDeviceClasses">L3: Deny Device Classes (Installation Restriction)</string>
+      <string id="L3_DenyDeviceClasses_Help">Configures DenyDeviceClasses to prevent Windows from installing drivers for disk drives, CD-ROM, floppy, printer, WPD (MTP/PTP), and imaging device classes.
+
+GUIDs blocked:
+  {4D36E967} Disk drives
+  {4D36E965} CD-ROM
+  {4D36E969} Floppy/removable
+  {4D36E979} Printers
+  {EEC5AD98} WPD (MTP/PTP)
+  {70AE35D8} WPD Print subclass
+  {6BDD1FC6} Still image / PTP / iPhone
+
+Enabled = Device classes denied (retroactive)
+Disabled = Device classes allowed
+Not Configured = No change</string>
+
+      <!-- Layer 4 -->
+      <string id="L4_AutoPlay">L4: Disable AutoPlay and AutoRun</string>
+      <string id="L4_AutoPlay_Help">Disables AutoPlay on all drive types (NoDriveTypeAutoRun=0xFF) and stops the ShellHWDetection service to prevent any automatic execution when media is inserted.
+
+Enabled = AutoPlay/AutoRun disabled
+Disabled = AutoPlay/AutoRun restored
+Not Configured = No change</string>
+
+      <!-- Layer 5 -->
+      <string id="L5_VolumeWatcher">L5: Volume Watcher (Auto-Eject Task)</string>
+      <string id="L5_VolumeWatcher_Help">Controls the USBGuard_VolumeWatcher scheduled task, which monitors for new volume mount events via WMI and auto-ejects unauthorized devices within approximately one second. A toast notification is shown to the user.
+
+Enabled = Volume Watcher task installed and running
+Disabled = Volume Watcher task removed
+Not Configured = No change
+
+Note: This policy setting instructs the USBGuard script to install or remove the task. The Group Policy client does not directly create the scheduled task.</string>
+
+      <!-- Layer 6 -->
+      <string id="L6_Thunderbolt">L6: Block Thunderbolt Storage</string>
+      <string id="L6_Thunderbolt_Help">Disables the Thunderbolt driver (Start=4) to prevent Thunderbolt-attached external storage devices.
+
+Enabled = Thunderbolt blocked
+Disabled = Thunderbolt allowed
+Not Configured = No change</string>
+
+      <!-- Layer 7 -->
+      <string id="L7_WPD">L7: Block WPD / MTP / PTP (Phones, Cameras)</string>
+      <string id="L7_WPD_Help">Disables the Windows Portable Devices driver stack (WpdFilesystemDriver, WUDFRd, WpdUpFltr) and adds MTP/PTP/Imaging GUIDs to the deny list.
+
+This blocks:
+  - Android phones (MTP file transfer mode)
+  - iPhones via iTunes (PTP/AFC protocol)
+  - Digital cameras (PTP/MTP)
+  - Media players and portable DACs
+
+Phones will still charge normally (VBUS power is electrical and unaffected).
+
+Enabled = WPD stack disabled, MTP/PTP blocked
+Disabled = WPD stack restored
+Not Configured = No change</string>
+
+      <!-- Layer 8 -->
+      <string id="L8_TamperDetection">L8: Tamper Detection</string>
+      <string id="L8_TamperDetection_Help">Controls the USBGuard_TamperDetection scheduled task, which runs every 5 minutes as SYSTEM. It checks L1 (USBSTOR), L2 (WriteProtect), and L7 (WpdFilesystemDriver); re-applies any reverted values; and logs to tamper.log, audit.log, and Windows Event Log (EventId 1009).
+
+Enabled = Tamper detection task installed
+Disabled = Tamper detection task removed
+Not Configured = No change</string>
+
+      <!-- Layer 9 -->
+      <string id="L9_SDCard">L9: Block SD Card Readers</string>
+      <string id="L9_SDCard_Help">Blocks SD card reader devices to prevent data transfer via built-in or external SD card slots.
+
+Enabled = SD card readers blocked
+Disabled = SD card readers allowed
+Not Configured = No change</string>
+
+      <!-- Layer 10 -->
+      <string id="L10_BluetoothFireWire">L10: Block Bluetooth File Transfer and FireWire</string>
+      <string id="L10_BluetoothFireWire_Help">Blocks Bluetooth OBEX file transfer and IEEE 1394 (FireWire) storage to close additional data exfiltration vectors.
+
+Enabled = Bluetooth file transfer and FireWire blocked
+Disabled = Bluetooth file transfer and FireWire allowed
+Not Configured = No change</string>
+
+      <!-- Notifications -->
+      <string id="CompanyName">Company Name</string>
+      <string id="CompanyName_Help">Sets the company name displayed in USBGuard user notifications (toast messages and HTA GUI).
+
+Maximum length: 100 characters.
+Control characters are stripped automatically.</string>
+
+      <string id="NotifyMessage">Notification Message</string>
+      <string id="NotifyMessage_Help">Sets the custom notification message displayed to users when a USB device is blocked or ejected.
+
+Maximum length: 500 characters.
+Control characters are stripped automatically.
+
+Example: "USB storage devices are not permitted on this computer. Contact the IT Help Desk if you need a temporary exception."</string>
+
+      <!-- Allowlist -->
+      <string id="AllowlistEntries">Allowed Device IDs</string>
+      <string id="AllowlistEntries_Help">Specifies PNP Device ID prefixes that are allowed to bypass USBGuard's Volume Watcher (L5) auto-eject.
+
+Each entry is matched by prefix against the device's PNP Device ID (e.g., "USBSTOR\DISK&amp;VEN_KINGSTON" matches any Kingston USB drive).
+
+Devices on this list will still be subject to Layers 1-4, 6-7. The allowlist only prevents auto-eject by the Volume Watcher.
+
+Enter one device ID prefix per line:
+  Name = a friendly label (e.g., "Kingston DataTraveler")
+  Value = the PNP Device ID prefix (e.g., "USBSTOR\DISK&amp;VEN_KINGSTON")</string>
+
+    </stringTable>
+
+    <presentationTable>
+
+      <!-- Layer presentations (simple enable/disable — no extra elements) -->
+      <presentation id="L1_USBSTOR" />
+      <presentation id="L2_WriteProtect" />
+      <presentation id="L3_DenyDeviceClasses" />
+      <presentation id="L4_AutoPlay" />
+      <presentation id="L5_VolumeWatcher" />
+      <presentation id="L6_Thunderbolt" />
+      <presentation id="L7_WPD" />
+      <presentation id="L8_TamperDetection" />
+      <presentation id="L9_SDCard" />
+      <presentation id="L10_BluetoothFireWire" />
+
+      <!-- Company Name -->
+      <presentation id="CompanyName">
+        <textBox refId="CompanyName_Value">
+          <label>Company name (max 100 characters):</label>
+          <defaultValue>IT Department</defaultValue>
+        </textBox>
+      </presentation>
+
+      <!-- Notification Message -->
+      <presentation id="NotifyMessage">
+        <textBox refId="NotifyMessage_Value">
+          <label>Message shown to users (max 500 characters):</label>
+          <defaultValue>USB storage devices are not permitted. Contact IT for exceptions.</defaultValue>
+        </textBox>
+      </presentation>
+
+      <!-- Allowlist -->
+      <presentation id="AllowlistEntries">
+        <listBox refId="AllowlistEntries_List">Allowed Device ID prefixes:</listBox>
+      </presentation>
+
+    </presentationTable>
+
+  </resources>
+</policyDefinitionResources>

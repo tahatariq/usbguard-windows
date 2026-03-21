@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USBGuard ADMX Template
+  Exposes USBGuard settings as Group Policy under:
+    Computer Configuration > Administrative Templates > USBGuard
+
+  Policy store: HKLM\SOFTWARE\USBGuard
+  Copy this file to %SystemRoot%\PolicyDefinitions\
+  Copy en-US\USBGuard.adml to %SystemRoot%\PolicyDefinitions\en-US\
+-->
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   revision="1.0"
+                   schemaVersion="1.0"
+                   xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+
+  <policyNamespaces>
+    <target prefix="usbguard" namespace="USBGuard.Policies" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+
+  <resources minRequiredRevision="1.0" />
+
+  <categories>
+    <category name="USBGuard" displayName="$(string.Cat_USBGuard)" />
+    <category name="USBGuard_Layers" displayName="$(string.Cat_Layers)"
+              parentCategory="USBGuard" />
+    <category name="USBGuard_Notifications" displayName="$(string.Cat_Notifications)"
+              parentCategory="USBGuard" />
+    <category name="USBGuard_Allowlist" displayName="$(string.Cat_Allowlist)"
+              parentCategory="USBGuard" />
+  </categories>
+
+  <policies>
+
+    <!-- ================================================================== -->
+    <!-- Layer 1: USBSTOR (USB Mass Storage)                                -->
+    <!-- ================================================================== -->
+    <policy name="L1_USBSTOR"
+            class="Machine"
+            displayName="$(string.L1_USBSTOR)"
+            explainText="$(string.L1_USBSTOR_Help)"
+            presentation="$(presentation.L1_USBSTOR)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+      <elements>
+        <!-- No additional elements; Enabled = block, Disabled = allow -->
+      </elements>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 2: StorageDevicePolicies (Write Protection)                  -->
+    <!-- ================================================================== -->
+    <policy name="L2_WriteProtect"
+            class="Machine"
+            displayName="$(string.L2_WriteProtect)"
+            explainText="$(string.L2_WriteProtect_Help)"
+            presentation="$(presentation.L2_WriteProtect)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 3: DenyDeviceClasses (Device Installation Restriction)       -->
+    <!-- ================================================================== -->
+    <policy name="L3_DenyDeviceClasses"
+            class="Machine"
+            displayName="$(string.L3_DenyDeviceClasses)"
+            explainText="$(string.L3_DenyDeviceClasses_Help)"
+            presentation="$(presentation.L3_DenyDeviceClasses)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 4: AutoPlay / AutoRun                                        -->
+    <!-- ================================================================== -->
+    <policy name="L4_AutoPlay"
+            class="Machine"
+            displayName="$(string.L4_AutoPlay)"
+            explainText="$(string.L4_AutoPlay_Help)"
+            presentation="$(presentation.L4_AutoPlay)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 5: Volume Watcher (Scheduled Task)                           -->
+    <!-- ================================================================== -->
+    <policy name="L5_VolumeWatcher"
+            class="Machine"
+            displayName="$(string.L5_VolumeWatcher)"
+            explainText="$(string.L5_VolumeWatcher_Help)"
+            presentation="$(presentation.L5_VolumeWatcher)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 6: Thunderbolt                                               -->
+    <!-- ================================================================== -->
+    <policy name="L6_Thunderbolt"
+            class="Machine"
+            displayName="$(string.L6_Thunderbolt)"
+            explainText="$(string.L6_Thunderbolt_Help)"
+            presentation="$(presentation.L6_Thunderbolt)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 7: WPD / MTP / PTP (Phones, Cameras)                        -->
+    <!-- ================================================================== -->
+    <policy name="L7_WPD"
+            class="Machine"
+            displayName="$(string.L7_WPD)"
+            explainText="$(string.L7_WPD_Help)"
+            presentation="$(presentation.L7_WPD)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 8: Tamper Detection                                          -->
+    <!-- ================================================================== -->
+    <policy name="L8_TamperDetection"
+            class="Machine"
+            displayName="$(string.L8_TamperDetection)"
+            explainText="$(string.L8_TamperDetection_Help)"
+            presentation="$(presentation.L8_TamperDetection)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 9: SD Card (block-sdcard)                                    -->
+    <!-- ================================================================== -->
+    <policy name="L9_SDCard"
+            class="Machine"
+            displayName="$(string.L9_SDCard)"
+            explainText="$(string.L9_SDCard_Help)"
+            presentation="$(presentation.L9_SDCard)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Layer 10: Bluetooth / FireWire                                     -->
+    <!-- ================================================================== -->
+    <policy name="L10_BluetoothFireWire"
+            class="Machine"
+            displayName="$(string.L10_BluetoothFireWire)"
+            explainText="$(string.L10_BluetoothFireWire_Help)"
+            presentation="$(presentation.L10_BluetoothFireWire)"
+            key="SOFTWARE\USBGuard\Policy">
+      <parentCategory ref="USBGuard_Layers" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Company Name                                                       -->
+    <!-- ================================================================== -->
+    <policy name="CompanyName"
+            class="Machine"
+            displayName="$(string.CompanyName)"
+            explainText="$(string.CompanyName_Help)"
+            presentation="$(presentation.CompanyName)"
+            key="SOFTWARE\USBGuard">
+      <parentCategory ref="USBGuard_Notifications" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <elements>
+        <text id="CompanyName_Value" valueName="CompanyName" maxLength="100" />
+      </elements>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Notification Message                                               -->
+    <!-- ================================================================== -->
+    <policy name="NotifyMessage"
+            class="Machine"
+            displayName="$(string.NotifyMessage)"
+            explainText="$(string.NotifyMessage_Help)"
+            presentation="$(presentation.NotifyMessage)"
+            key="SOFTWARE\USBGuard">
+      <parentCategory ref="USBGuard_Notifications" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <elements>
+        <text id="NotifyMessage_Value" valueName="NotifyMessage" maxLength="500" />
+      </elements>
+    </policy>
+
+    <!-- ================================================================== -->
+    <!-- Allowlist Entries                                                   -->
+    <!-- ================================================================== -->
+    <policy name="AllowlistEntries"
+            class="Machine"
+            displayName="$(string.AllowlistEntries)"
+            explainText="$(string.AllowlistEntries_Help)"
+            presentation="$(presentation.AllowlistEntries)"
+            key="SOFTWARE\USBGuard\Allowlist">
+      <parentCategory ref="USBGuard_Allowlist" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <elements>
+        <list id="AllowlistEntries_List" key="SOFTWARE\USBGuard\Allowlist"
+              additive="true" explicitValue="true" />
+      </elements>
+    </policy>
+
+  </policies>
+</policyDefinitions>

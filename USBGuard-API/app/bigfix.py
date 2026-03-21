@@ -3,19 +3,22 @@ IBM BigFix REST API client for the USBGuard API.
 
 Handles computer existence checks, action deployment (grant/revoke USB
 exceptions), and registry-based status queries — all over the BigFix REST
-API using synchronous httpx requests.
+API using async httpx requests with configurable SSL verification.
 """
 
 import base64
+import logging
 import re
 import urllib.parse
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta
+from typing import Optional, Union
 from xml.etree import ElementTree as ET
 
 import httpx
 
 from app.models import ExceptionStatus
+
+logger = logging.getLogger("usbguard.bigfix")
 
 
 # ---------------------------------------------------------------------------
@@ -107,21 +110,72 @@ def _encode_powershell(script: str) -> str:
 
 class BigFixClient:
     """
-    Synchronous client for the IBM BigFix REST API.
+    Async client for the IBM BigFix REST API.
 
-    Uses httpx with SSL verification disabled because BigFix ships with a
-    self-signed certificate by default.
+    Uses httpx.AsyncClient with configurable SSL verification.  Pass a CA
+    certificate path via *ca_cert* for production; omit or pass empty string
+    to disable verification (for development / self-signed BigFix certs).
     """
 
-    def __init__(self, server: str, port: int, username: str, password: str) -> None:
+    def __init__(
+        self,
+        server: str,
+        port: int,
+        username: str,
+        password: str,
+        ca_cert: str = "",
+    ) -> None:
         self._auth = (username, password)
         self._base_url = f"https://{server}:{port}"
+        self._verify: Union[bool, str] = ca_cert if ca_cert else False
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def start(self) -> None:
+        """Create the shared async HTTP client (call during app lifespan)."""
+        self._client = httpx.AsyncClient(
+            verify=self._verify,
+            auth=self._auth,
+            timeout=30.0,
+        )
+
+    async def close(self) -> None:
+        """Close the shared async HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    @property
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            raise RuntimeError("BigFixClient not started — call start() first.")
+        return self._client
 
     # ------------------------------------------------------------------
     # Public methods
     # ------------------------------------------------------------------
 
-    def computer_exists(self, pc_name: str) -> bool:
+    async def health_check(self) -> dict:
+        """
+        Probe the BigFix server to verify connectivity.
+
+        Returns a dict with ``status`` ("healthy", "degraded", or "unhealthy")
+        and optional ``detail`` message.
+        """
+        try:
+            response = await self._http.get(f"{self._base_url}/api/login")
+            if response.status_code in (200, 401, 403):
+                return {"status": "healthy", "detail": "BigFix server reachable."}
+            return {
+                "status": "degraded",
+                "detail": f"BigFix returned HTTP {response.status_code}.",
+            }
+        except httpx.HTTPError as exc:
+            return {
+                "status": "unhealthy",
+                "detail": f"BigFix unreachable: {exc}",
+            }
+
+    async def computer_exists(self, pc_name: str) -> bool:
         """
         Check whether a computer with the given name is enrolled in BigFix.
 
@@ -137,9 +191,8 @@ class BigFixClient:
         )
         url = f"{self._base_url}/api/query?relevance={relevance}"
 
-        with httpx.Client(verify=False, auth=self._auth) as client:
-            response = client.get(url)
-            response.raise_for_status()
+        response = await self._http.get(url)
+        response.raise_for_status()
 
         root = ET.fromstring(response.text)
         answer_el = root.find(".//Answer")
@@ -147,7 +200,7 @@ class BigFixClient:
             return False
         return answer_el.text.strip() == "1"
 
-    def create_exception_action(
+    async def create_exception_action(
         self,
         pc_name: str,
         username: str,
@@ -189,9 +242,9 @@ class BigFixClient:
             end_offset=end_offset,
         )
 
-        return self._post_action(bes_xml)
+        return await self._post_action(bes_xml)
 
-    def revoke_exception_action(self, pc_name: str) -> str:
+    async def revoke_exception_action(self, pc_name: str) -> str:
         """
         Deploy a BigFix action that revokes USB access on the target PC.
 
@@ -217,9 +270,9 @@ class BigFixClient:
             end_offset="+07:00:00:00",      # 7-day window for offline PCs
         )
 
-        return self._post_action(bes_xml)
+        return await self._post_action(bes_xml)
 
-    def get_exception_status(self, pc_name: str) -> ExceptionStatus:
+    async def get_exception_status(self, pc_name: str) -> ExceptionStatus:
         """
         Query the current USB exception status from the PC's registry via BigFix.
 
@@ -229,20 +282,18 @@ class BigFixClient:
         Returns:
             An :class:`~app.models.ExceptionStatus` populated from registry values.
         """
-        expiry_raw = self._query_registry_value(pc_name, "ExceptionExpiry")
-        user_raw = self._query_registry_value(pc_name, "ExceptionUser")
-        ritm_raw = self._query_registry_value(pc_name, "ExceptionRITM")
+        expiry_raw = await self._query_registry_value(pc_name, "ExceptionExpiry")
+        user_raw = await self._query_registry_value(pc_name, "ExceptionUser")
+        ritm_raw = await self._query_registry_value(pc_name, "ExceptionRITM")
 
         has_active = False
         expiry_dt = None
 
         if expiry_raw:
-            from datetime import datetime as _dt
             try:
-                expiry_dt = _dt.strptime(expiry_raw.strip(), "%Y-%m-%d")
+                expiry_dt = datetime.strptime(expiry_raw.strip(), "%Y-%m-%d")
                 has_active = expiry_dt.date() >= date.today()
             except ValueError:
-                # Unparseable expiry — treat as no active exception.
                 expiry_dt = None
                 has_active = False
 
@@ -258,7 +309,7 @@ class BigFixClient:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _query_registry_value(self, pc_name: str, value_name: str) -> Optional[str]:
+    async def _query_registry_value(self, pc_name: str, value_name: str) -> Optional[str]:
         """
         Query a single registry value from HKLM\\SOFTWARE\\USBGuard on a
         specific computer via the BigFix relevance API.
@@ -280,9 +331,8 @@ class BigFixClient:
         url = f"{self._base_url}/api/query?relevance={encoded_relevance}"
 
         try:
-            with httpx.Client(verify=False, auth=self._auth) as client:
-                response = client.get(url)
-                response.raise_for_status()
+            response = await self._http.get(url)
+            response.raise_for_status()
         except httpx.HTTPStatusError:
             return None
 
@@ -292,13 +342,12 @@ class BigFixClient:
             return None
 
         text = answer_el.text.strip()
-        # BigFix returns an empty-ish result when the key doesn't exist.
         if not text:
             return None
 
         return text
 
-    def _post_action(self, bes_xml: str) -> str:
+    async def _post_action(self, bes_xml: str) -> str:
         """
         POST a BES XML action document to BigFix and return the new action ID.
 
@@ -315,26 +364,19 @@ class BigFixClient:
         url = f"{self._base_url}/api/actions"
         headers = {"Content-Type": "application/xml"}
 
-        with httpx.Client(verify=False, auth=self._auth) as client:
-            response = client.post(url, content=bes_xml.encode("utf-8"), headers=headers)
-            response.raise_for_status()
+        response = await self._http.post(url, content=bes_xml.encode("utf-8"), headers=headers)
+        response.raise_for_status()
 
-        # The BigFix API returns an XML document whose root element has a
-        # Resource attribute containing the URL of the new action, e.g.:
-        #   <BESAPI ...><Action Resource="https://server:52311/api/action/123" .../>
         root = ET.fromstring(response.text)
 
-        # Try to find an Action element with a Resource attribute.
         action_el = root.find(".//Action")
         if action_el is not None:
             resource = action_el.get("Resource", "")
             if resource:
-                # Extract the numeric ID from the end of the URL.
                 match = re.search(r"/(\d+)$", resource)
                 if match:
                     return match.group(1)
 
-        # Fallback: look for an ID element.
         id_el = root.find(".//ID")
         if id_el is not None and id_el.text:
             return id_el.text.strip()

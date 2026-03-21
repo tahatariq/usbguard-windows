@@ -60,6 +60,18 @@ function Get-LayerStatusMap {
     $v = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" -Name Start -EA SilentlyContinue).Start
     $m["L7 - WPD / MTP / PTP (Phones)"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "unknown" } else { "allowed" }
 
+    # L8 - SD Card Reader
+    $v = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\sdbus" -Name Start -EA SilentlyContinue).Start
+    $m["L8 - SD Card Reader (sdbus)"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
+    # L9 - Bluetooth File Transfer
+    $v = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX" -Name Start -EA SilentlyContinue).Start
+    $m["L9 - Bluetooth File Transfer (OBEX)"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
+    # L10 - FireWire
+    $v = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci" -Name Start -EA SilentlyContinue).Start
+    $m["L10 - FireWire / IEEE 1394"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
     return $m
 }
 
@@ -168,6 +180,22 @@ function Build-HtmlReport {
   <span>Allowlist Entries:</span> $AllowlistCount &nbsp;|&nbsp;
   <span>Overall:</span> <span class="status $overallCls">$blocked/$total layers active ($pct% compliant)</span>
 </div>
+
+<h2 style="color:#00d4ff;font-size:1.2em;margin-top:32px;">Compliance Control Mapping</h2>
+<table>
+  <tr><th>Layer</th><th>NIST 800-53</th><th>CIS Control</th><th>Description</th></tr>
+  <tr><td>L1 USBSTOR</td><td>MP-7, SI-3</td><td>CIS 10.3</td><td>Media protection — removable storage</td></tr>
+  <tr><td>L2 WriteProtect</td><td>MP-7, SI-12</td><td>CIS 10.5</td><td>Media protection — write block</td></tr>
+  <tr><td>L3 DenyDeviceClasses</td><td>CM-7, SI-3</td><td>CIS 2.7</td><td>Least functionality — device class restriction</td></tr>
+  <tr><td>L4 AutoPlay</td><td>SI-3, SC-18</td><td>CIS 10.1</td><td>Malicious code protection — AutoRun</td></tr>
+  <tr><td>L5 VolumeWatcher</td><td>SI-4, AU-6</td><td>CIS 10.4</td><td>System monitoring — real-time ejection</td></tr>
+  <tr><td>L6 Thunderbolt</td><td>MP-7, AC-19</td><td>CIS 10.3</td><td>Access control — external ports</td></tr>
+  <tr><td>L7 WPD/MTP/PTP</td><td>MP-7, SI-3</td><td>CIS 10.3</td><td>Media protection — mobile device data</td></tr>
+  <tr><td>L8 SD Card</td><td>MP-7, AC-19</td><td>CIS 10.3</td><td>Media protection — SD card readers</td></tr>
+  <tr><td>L9 Bluetooth FT</td><td>AC-18, SC-40</td><td>CIS 15.7</td><td>Wireless access — file transfer</td></tr>
+  <tr><td>L10 FireWire</td><td>MP-7, AC-19</td><td>CIS 10.3</td><td>Media protection — legacy DMA ports</td></tr>
+  <tr><td>Tamper Detection</td><td>SI-7, AU-9</td><td>CIS 10.4</td><td>Software integrity — policy enforcement</td></tr>
+</table>
 </body>
 </html>
 "@
@@ -183,7 +211,14 @@ Write-ConsoleSummary -StatusMap $statusMap -TamperStatus $tamperStatus -Allowlis
 if (-not $NoHtml) {
     $dir = Split-Path $OutputPath -Parent
     if (-not (Test-Path $dir)) { New-Item $dir -ItemType Directory -Force | Out-Null }
-    Build-HtmlReport -StatusMap $statusMap -TamperStatus $tamperStatus -AllowlistCount $allowlistCount |
-        Set-Content -Path $OutputPath -Encoding UTF8
+    $htmlContent = Build-HtmlReport -StatusMap $statusMap -TamperStatus $tamperStatus -AllowlistCount $allowlistCount
+    Set-Content -Path $OutputPath -Value $htmlContent -Encoding UTF8
+
+    # Generate integrity hash for non-repudiation
+    $hashPath = "$OutputPath.sha256"
+    $hash = (Get-FileHash -Path $OutputPath -Algorithm SHA256).Hash
+    $hashLine = "$hash  $(Split-Path $OutputPath -Leaf)  Generated=$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss')  Machine=$env:COMPUTERNAME"
+    Set-Content -Path $hashPath -Value $hashLine -Encoding UTF8
     Write-Host "Report written to: $OutputPath" -ForegroundColor Cyan
+    Write-Host "Integrity hash:    $hashPath ($hash)" -ForegroundColor DarkGray
 }

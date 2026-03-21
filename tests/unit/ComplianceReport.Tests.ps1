@@ -7,7 +7,8 @@ BeforeAll {
         # RegOverrides maps reg-value-key to value, e.g.:
         #   @{ USBSTOR_Start=4; WriteProtect=1; DenyDeviceClasses=1;
         #      NoDriveTypeAutoRun=255; VolumeWatcher="Running";
-        #      Thunderbolt_Start=4; WpdFsDriver_Start=4 }
+        #      Thunderbolt_Start=4; WpdFsDriver_Start=4;
+        #      Sdbus_Start=4; BthOBEX_Start=4; Firewire_Start=4 }
 
         $m = [ordered]@{}
 
@@ -32,6 +33,15 @@ BeforeAll {
         $v = $RegOverrides["WpdFsDriver_Start"]
         $m["L7 - WPD / MTP / PTP (Phones)"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "unknown" } else { "allowed" }
 
+        $v = $RegOverrides["Sdbus_Start"]
+        $m["L8 - SD Card Reader (sdbus)"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
+        $v = $RegOverrides["BthOBEX_Start"]
+        $m["L9 - Bluetooth File Transfer"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
+        $v = $RegOverrides["Firewire_Start"]
+        $m["L10 - FireWire / IEEE 1394"] = if ($v -eq 4) { "blocked" } elseif ($null -eq $v) { "not_present" } else { "allowed" }
+
         return $m
     }
 
@@ -43,11 +53,26 @@ BeforeAll {
         $pct     = if ($total -gt 0) { [math]::Round($blocked / $total * 100) } else { 0 }
         $ts      = "2026-01-01 00:00:00"
 
+        # NIST/CIS framework mapping table
+        $mappingTable = [ordered]@{
+            "L1 - USB Storage (USBSTOR)"     = "NIST SP 800-53 MP-7, CIS 10.3"
+            "L2 - Write Protect"              = "NIST SP 800-53 MP-7, CIS 10.3"
+            "L3 - Device Class Deny List"     = "NIST SP 800-53 CM-7, CIS 10.4"
+            "L4 - AutoPlay / AutoRun"         = "NIST SP 800-53 CM-7, CIS 10.4"
+            "L5 - Volume Watcher Task"        = "NIST SP 800-53 SI-4, CIS 8.5"
+            "L6 - Thunderbolt"                = "NIST SP 800-53 MP-7, CIS 10.3"
+            "L7 - WPD / MTP / PTP (Phones)"  = "NIST SP 800-53 MP-7, CIS 10.3"
+            "L8 - SD Card Reader (sdbus)"     = "NIST SP 800-53 MP-7, CIS 10.3"
+            "L9 - Bluetooth File Transfer"    = "NIST SP 800-53 AC-19, CIS 10.5"
+            "L10 - FireWire / IEEE 1394"      = "NIST SP 800-53 MP-7, CIS 10.3"
+        }
+
         $rowsHtml = foreach ($layer in $StatusMap.Keys) {
             $s     = $StatusMap[$layer]
             $cls   = switch ($s) { "blocked" { "blocked" } "not_present" { "na" } "unknown" { "unknown" } default { "allowed" } }
             $label = switch ($s) { "blocked" { "BLOCKED" } "not_present" { "N/A" } "unknown" { "UNKNOWN" } default { "ALLOWED" } }
-            "<tr><td>$layer</td><td class='status $cls'>$label</td></tr>"
+            $mapping = if ($mappingTable.Contains($layer)) { $mappingTable[$layer] } else { "" }
+            "<tr><td>$layer</td><td class='status $cls'>$label</td><td class='mapping'>$mapping</td></tr>"
         }
 
         $overallCls = if ($pct -eq 100) { "blocked" } elseif ($pct -ge 50) { "unknown" } else { "allowed" }
@@ -60,7 +85,7 @@ BeforeAll {
 <h1>USBGuard Compliance Report</h1>
 <div class="meta">Machine: <b>$MachineName</b> | Generated: $ts</div>
 <table>
-  <tr><th>Protection Layer</th><th>Status</th></tr>
+  <tr><th>Protection Layer</th><th>Status</th><th>Framework Mapping</th></tr>
   $($rowsHtml -join "`n  ")
 </table>
 <div class="summary">
@@ -72,6 +97,13 @@ BeforeAll {
 </html>
 "@
     }
+
+    function Write-IntegrityHash_Test {
+        param([string]$ReportPath, [string]$HashPath)
+        $hash = (Get-FileHash -Path $ReportPath -Algorithm SHA256).Hash
+        Set-Content -Path $HashPath -Value "$hash  $(Split-Path $ReportPath -Leaf)" -Encoding UTF8
+        return $hash
+    }
 }
 
 Describe "Get-LayerStatusMap_Test" {
@@ -82,12 +114,13 @@ Describe "Get-LayerStatusMap_Test" {
                 USBSTOR_Start=4; WriteProtect=1; DenyDeviceClasses=1
                 NoDriveTypeAutoRun=255; VolumeWatcher="Running"
                 Thunderbolt_Start=4; WpdFsDriver_Start=4
+                Sdbus_Start=4; BthOBEX_Start=4; Firewire_Start=4
             }
             $script:map = Get-LayerStatusMap_Test -RegOverrides $all
         }
 
-        It "Should return 7 layers" {
-            $map.Count | Should -Be 7
+        It "Should return 10 layers" {
+            $map.Count | Should -Be 10
         }
 
         It "L1 USBSTOR should be blocked" {
@@ -117,6 +150,18 @@ Describe "Get-LayerStatusMap_Test" {
         It "L7 WPD should be blocked" {
             $map["L7 - WPD / MTP / PTP (Phones)"] | Should -Be "blocked"
         }
+
+        It "L8 SD Card should be blocked" {
+            $map["L8 - SD Card Reader (sdbus)"] | Should -Be "blocked"
+        }
+
+        It "L9 Bluetooth File Transfer should be blocked" {
+            $map["L9 - Bluetooth File Transfer"] | Should -Be "blocked"
+        }
+
+        It "L10 FireWire should be blocked" {
+            $map["L10 - FireWire / IEEE 1394"] | Should -Be "blocked"
+        }
     }
 
     Context "All layers allowed (policy off)" {
@@ -125,6 +170,7 @@ Describe "Get-LayerStatusMap_Test" {
                 USBSTOR_Start=3; WriteProtect=0; DenyDeviceClasses=0
                 NoDriveTypeAutoRun=145; VolumeWatcher="Stopped"
                 Thunderbolt_Start=3; WpdFsDriver_Start=3
+                Sdbus_Start=3; BthOBEX_Start=3; Firewire_Start=3
             }
             $script:map = Get-LayerStatusMap_Test -RegOverrides $none
         }
@@ -139,6 +185,18 @@ Describe "Get-LayerStatusMap_Test" {
 
         It "L6 Thunderbolt should be allowed (not blocked)" {
             $map["L6 - Thunderbolt"] | Should -Be "allowed"
+        }
+
+        It "L8 SD Card should be allowed" {
+            $map["L8 - SD Card Reader (sdbus)"] | Should -Be "allowed"
+        }
+
+        It "L9 Bluetooth File Transfer should be allowed" {
+            $map["L9 - Bluetooth File Transfer"] | Should -Be "allowed"
+        }
+
+        It "L10 FireWire should be allowed" {
+            $map["L10 - FireWire / IEEE 1394"] | Should -Be "allowed"
         }
     }
 
@@ -156,6 +214,21 @@ Describe "Get-LayerStatusMap_Test" {
         It "L7 should be unknown when WpdFsDriver_Start is null" {
             $m = Get-LayerStatusMap_Test -RegOverrides @{}
             $m["L7 - WPD / MTP / PTP (Phones)"] | Should -Be "unknown"
+        }
+
+        It "L8 should be not_present when Sdbus_Start is null" {
+            $m = Get-LayerStatusMap_Test -RegOverrides @{}
+            $m["L8 - SD Card Reader (sdbus)"] | Should -Be "not_present"
+        }
+
+        It "L9 should be not_present when BthOBEX_Start is null" {
+            $m = Get-LayerStatusMap_Test -RegOverrides @{}
+            $m["L9 - Bluetooth File Transfer"] | Should -Be "not_present"
+        }
+
+        It "L10 should be not_present when Firewire_Start is null" {
+            $m = Get-LayerStatusMap_Test -RegOverrides @{}
+            $m["L10 - FireWire / IEEE 1394"] | Should -Be "not_present"
         }
     }
 }

@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  USBGuard WiX v3 MSI Installer
+  Builds an MSI that:
+    - Copies PowerShell scripts to %ProgramFiles%\USBGuard\
+    - Runs block + install-watcher + install-tamper-detection during install
+    - Runs remove-tamper-detection + remove-watcher + unblock during uninstall
+    - Requires elevation (per-machine install)
+
+  Build:
+    candle.exe Product.wxs -dProductVersion=1.0.0.0
+    light.exe Product.wixobj -o USBGuard.msi
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <!-- ================================================================== -->
+  <!-- Product Definition                                                  -->
+  <!-- ================================================================== -->
+  <Product Id="*"
+           Name="USBGuard"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="IT Security"
+           UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="USBGuard Enterprise USB Device Management"
+             Comments="Installs USBGuard USB lockdown policy and monitoring scripts."
+             Platform="x64" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of USBGuard is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ================================================================ -->
+    <!-- Properties                                                        -->
+    <!-- ================================================================ -->
+    <Property Id="ARPPRODUCTICON" Value="USBGuardIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/your-org/usbguard-windows" />
+
+    <!-- Require elevation -->
+    <Condition Message="USBGuard requires administrator privileges. Please run the installer as administrator.">
+      Privileged
+    </Condition>
+
+    <!-- ================================================================ -->
+    <!-- Directory Structure                                               -->
+    <!-- ================================================================ -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="USBGuard">
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <!-- ================================================================ -->
+    <!-- Component Group: PowerShell Scripts                               -->
+    <!-- ================================================================ -->
+    <ComponentGroup Id="ScriptFiles" Directory="INSTALLFOLDER">
+
+      <Component Id="USBGuard_ps1" Guid="B1234567-1111-2222-3333-444444444401">
+        <File Id="USBGuard.ps1"
+              Source="$(var.SourceDir)\USBGuard.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="USBGuard_Advanced_ps1" Guid="B1234567-1111-2222-3333-444444444402">
+        <File Id="USBGuard_Advanced.ps1"
+              Source="$(var.SourceDir)\USBGuard_Advanced.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="USBGuard_Snapshot_ps1" Guid="B1234567-1111-2222-3333-444444444403">
+        <File Id="USBGuard_Snapshot.ps1"
+              Source="$(var.SourceDir)\USBGuard_Snapshot.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="USBGuard_ComplianceReport_ps1" Guid="B1234567-1111-2222-3333-444444444404">
+        <File Id="USBGuard_ComplianceReport.ps1"
+              Source="$(var.SourceDir)\USBGuard_ComplianceReport.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="Send_ExceptionNotification_ps1" Guid="B1234567-1111-2222-3333-444444444405">
+        <File Id="Send_ExceptionNotification.ps1"
+              Source="$(var.SourceDir)\Send-ExceptionNotification.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="Install_USBGuard_ps1" Guid="B1234567-1111-2222-3333-444444444406">
+        <File Id="Install_USBGuard.ps1"
+              Source="$(var.SourceDir)\Install-USBGuard.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="Uninstall_USBGuard_ps1" Guid="B1234567-1111-2222-3333-444444444407">
+        <File Id="Uninstall_USBGuard.ps1"
+              Source="$(var.SourceDir)\Uninstall-USBGuard.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="Detect_USBGuard_ps1" Guid="B1234567-1111-2222-3333-444444444408">
+        <File Id="Detect_USBGuard.ps1"
+              Source="$(var.SourceDir)\Detect-USBGuard.ps1"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="USBGuard_hta" Guid="B1234567-1111-2222-3333-444444444409">
+        <File Id="USBGuard.hta"
+              Source="$(var.SourceDir)\USBGuard.hta"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="Launch_USBGuard_bat" Guid="B1234567-1111-2222-3333-444444444410">
+        <File Id="Launch_USBGuard.bat"
+              Source="$(var.SourceDir)\Launch_USBGuard.bat"
+              KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+
+    <!-- ================================================================ -->
+    <!-- Custom Actions                                                    -->
+    <!-- ================================================================ -->
+
+    <!-- Find PowerShell -->
+    <Property Id="POWERSHELLEXE">
+      <RegistrySearch Id="POWERSHELLEXE_Search"
+                      Type="raw"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell"
+                      Name="Path" />
+    </Property>
+
+    <!-- Install: block + install-watcher + install-tamper-detection -->
+    <CustomAction Id="CA_Block"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action block"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="CA_InstallWatcher"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action install-watcher"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="CA_InstallTamperDetection"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action install-tamper-detection"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- Uninstall: remove-tamper-detection + remove-watcher + unblock -->
+    <CustomAction Id="CA_RemoveTamperDetection"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action remove-tamper-detection"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="CA_RemoveWatcher"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action remove-watcher"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="CA_Unblock"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]USBGuard.ps1&quot; -Action unblock"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- ================================================================ -->
+    <!-- Install Sequence                                                  -->
+    <!-- ================================================================ -->
+    <InstallExecuteSequence>
+      <!-- Install actions: run after files are copied -->
+      <Custom Action="CA_Block"
+              After="InstallFiles">
+        NOT Installed AND NOT REMOVE~="ALL"
+      </Custom>
+      <Custom Action="CA_InstallWatcher"
+              After="CA_Block">
+        NOT Installed AND NOT REMOVE~="ALL"
+      </Custom>
+      <Custom Action="CA_InstallTamperDetection"
+              After="CA_InstallWatcher">
+        NOT Installed AND NOT REMOVE~="ALL"
+      </Custom>
+
+      <!-- Uninstall actions: run before files are removed -->
+      <Custom Action="CA_RemoveTamperDetection"
+              Before="RemoveFiles">
+        REMOVE~="ALL"
+      </Custom>
+      <Custom Action="CA_RemoveWatcher"
+              After="CA_RemoveTamperDetection">
+        REMOVE~="ALL"
+      </Custom>
+      <Custom Action="CA_Unblock"
+              After="CA_RemoveWatcher">
+        REMOVE~="ALL"
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- ================================================================ -->
+    <!-- Feature                                                           -->
+    <!-- ================================================================ -->
+    <Feature Id="Complete"
+             Title="USBGuard"
+             Description="USBGuard USB device management and lockdown."
+             Level="1"
+             ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="ScriptFiles" />
+    </Feature>
+
+  </Product>
+</Wix>

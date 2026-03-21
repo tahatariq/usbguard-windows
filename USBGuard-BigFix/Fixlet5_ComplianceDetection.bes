@@ -1,5 +1,5 @@
 ; ============================================================================
-; USBGuard - BigFix Fixlet 5: Compliance Detection (v4 — incl. MTP/PTP)
+; USBGuard - BigFix Fixlet 5: Compliance Detection (v5 — incl. MTP/PTP)
 ; ============================================================================
 ; Fixlet Name:   USBGuard - Detect Non-Compliant USB Policy
 ; Description:   Detection-only. No action. Relevant when ANY layer is missing.
@@ -43,6 +43,21 @@
 ;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry
 ;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) != 4
 ; )
+; OR (
+;   /* L8 - SD card reader must be disabled (only relevant if driver is present) */
+;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry as string)) != 4
+; )
+; OR (
+;   /* L9 - Bluetooth file transfer must be disabled (only relevant if driver is present) */
+;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry as string)) != 4
+; )
+; OR (
+;   /* L10 - FireWire must be disabled (only relevant if driver is present) */
+;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry as string)) != 4
+; )
 ;
 ; ── ANALYSIS PROPERTIES ───────────────────────────────────────────────────────
 ;
@@ -79,6 +94,21 @@
 ;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
 ;   else "NOT_PRESENT"
 ;
+; Name: USBGuard_L8_SDCard
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "NOT_PRESENT"
+;
+; Name: USBGuard_L9_Bluetooth
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "NOT_PRESENT"
+;
+; Name: USBGuard_L10_FireWire
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "NOT_PRESENT"
+;
 ; Name: USBGuard_Overall
 ; Value: if (
 ;   (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" of native registry as string)) = 4
@@ -89,6 +119,12 @@
 ;   AND (not exists key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry
 ;        OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry as string)) = 4)
 ;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4
+;   AND (not exists key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry
+;        OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\sdbus" of native registry as string)) = 4)
+;   AND (not exists key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry
+;        OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX" of native registry as string)) = 4)
+;   AND (not exists key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry
+;        OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\1394ohci" of native registry as string)) = 4)
 ; ) then "COMPLIANT" else "NON-COMPLIANT"
 ;
 ; ─────────────────────────────────────────────────────────────────────────────

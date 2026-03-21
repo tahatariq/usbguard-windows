@@ -37,6 +37,9 @@ param(
         "block-storage","unblock-storage",
         "block-phones","unblock-phones",
         "block-printers","unblock-printers",
+        "block-sdcard","unblock-sdcard",
+        "block-bluetooth","unblock-bluetooth",
+        "block-firewire","unblock-firewire",
         "install-watcher","remove-watcher",
         "set-notify-config",
         "add-allowlist","remove-allowlist","list-allowlist",
@@ -59,6 +62,7 @@ $GUID_FLOPPY      = "{4D36E969-E325-11CE-BFC1-08002BE10318}"   # Removable/flopp
 $GUID_WPD         = "{EEC5AD98-8080-425F-922A-DABF3DE3F69A}"   # WPD (MTP/PTP devices)
 $GUID_WPD_PRINT   = "{70AE35D8-BF10-11D0-AC45-0000C0B0BFCB}"  # WPD printer subclass
 $GUID_IMAGING     = "{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}"   # Still image/PTP cameras
+$GUID_BT_OBEX    = "{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}"   # Bluetooth OBEX (file transfer)
 
 # ── WPD service registry paths (Layer 7) ──────────────────────────────────────
 # WUDFRd      - Windows User-mode Driver Framework, hosts WPD drivers
@@ -87,6 +91,10 @@ $REG_DENY_CLASSES   = "$REG_DENY_BASE\DenyDeviceClasses"
 $REG_AUTOPLAY       = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
 $REG_AUTOPLAY_USER  = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
 $REG_AUTORUN_POLICY = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+$REG_SDBUS          = "HKLM:\SYSTEM\CurrentControlSet\Services\sdbus"
+$REG_BT_OBEX        = "HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX"
+$REG_BT_RFCOMM      = "HKLM:\SYSTEM\CurrentControlSet\Services\RFCOMM"
+$REG_FIREWIRE       = "HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci"
 $REG_USBGUARD_CFG   = "HKLM:\SOFTWARE\USBGuard"
 $REG_ALLOWLIST      = "$REG_USBGUARD_CFG\Allowlist"
 
@@ -299,6 +307,7 @@ function Get-WpdStatus {
 # ─────────────────────────────────────────────────────────────────────────────
 function Block-StorageRegistry {
     if (Test-Path $REG_USBSTOR) {
+        Save-OriginalStart $REG_USBSTOR
         Set-RegDWord $REG_USBSTOR "Start" 4
         Write-Log "L1: USBSTOR disabled (Start=4)" "SUCCESS"
     } else { Write-Log "L1: USBSTOR key not found" "WARN" }
@@ -317,6 +326,7 @@ function Block-StorageRegistry {
     Write-Log "L3: DenyDeviceClasses policy applied" "SUCCESS"
 
     if (Test-Path $REG_THUNDERBOLT) {
+        Save-OriginalStart $REG_THUNDERBOLT
         Set-RegDWord $REG_THUNDERBOLT "Start" 4
         Write-Log "L6: Thunderbolt disabled" "SUCCESS"
     }
@@ -326,8 +336,10 @@ function Block-StorageRegistry {
 
 function Unblock-StorageRegistry {
     if (Test-Path $REG_USBSTOR) {
-        Set-RegDWord $REG_USBSTOR "Start" 3
-        Write-Log "L1: USBSTOR re-enabled (Start=3)" "SUCCESS"
+        $restore = Get-SavedStart $REG_USBSTOR
+        $startVal = if ($null -ne $restore) { $restore } else { 3 }
+        Set-RegDWord $REG_USBSTOR "Start" $startVal
+        Write-Log "L1: USBSTOR restored (Start=$startVal)" "SUCCESS"
     }
     Set-RegDWord $REG_STORAGE_POLICY "WriteProtect" 0
     Write-Log "L2: WriteProtect cleared" "SUCCESS"
@@ -343,8 +355,10 @@ function Unblock-StorageRegistry {
     Write-Log "L3: DenyDeviceClasses cleared" "SUCCESS"
 
     if (Test-Path $REG_THUNDERBOLT) {
-        Set-RegDWord $REG_THUNDERBOLT "Start" 3
-        Write-Log "L6: Thunderbolt re-enabled" "SUCCESS"
+        $restore = Get-SavedStart $REG_THUNDERBOLT
+        $startVal = if ($null -ne $restore) { $restore } else { 3 }
+        Set-RegDWord $REG_THUNDERBOLT "Start" $startVal
+        Write-Log "L6: Thunderbolt restored (Start=$startVal)" "SUCCESS"
     }
 }
 
@@ -416,6 +430,9 @@ function Save-NotifyConfig { param([string]$Company,[string]$Message)
 function Add-AllowlistEntry {
     param([string]$Id)
     if (-not $Id) { Write-Log "DeviceId required" "ERROR"; return }
+    if ($Id.Length -lt 20 -or $Id -notmatch '&VEN_|&PROD_') {
+        Write-Log "Allowlist: Device ID too broad. Include at least VEN_ and PROD_ identifiers for security (got: $Id)" "WARN"
+    }
     Ensure-RegPath $REG_ALLOWLIST
     $props = (Get-Item $REG_ALLOWLIST -EA SilentlyContinue).Property
     foreach ($p in $props) {
@@ -457,9 +474,9 @@ function Get-AllowlistEntries {
 
 function Write-NotifyScript {
     $cfg     = Get-NotifyConfig
-    $title   = ($cfg.Title   -replace '`','``' -replace '"','`"')
+    $title   = ($cfg.Title   -replace '`','``' -replace '"','`"' -replace '\$','`$')
     $msgRaw  = ($cfg.Message -replace '\{COMPANY\}', $cfg.CompanyName)
-    $msgEsc  = ($msgRaw -replace '`','``' -replace '"','`"')
+    $msgEsc  = ($msgRaw -replace '`','``' -replace '"','`"' -replace '\$','`$')
     $content = @"
 param([string]`$Title = "$title", [string]`$Message = "$msgEsc")
 try {
@@ -541,7 +558,7 @@ function Notify-User {
         $psExe  = "powershell.exe"
         $psArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$notifyScript`""
         $taskName = "USBGuard_Toast_$(Get-Random -Maximum 99999)"
-        if ($activeUser) {
+        if ($activeUser -and $activeUser -match '^[A-Za-z0-9_\-\.\\@]{1,104}$') {
             schtasks /create /tn "$taskName" /tr "$psExe $psArgs" /sc once /st 00:00 /ru "$activeUser" /f /RL LIMITED 2>&1 | Out-Null
             schtasks /run    /tn "$taskName" 2>&1 | Out-Null
             Start-Sleep -Seconds 5
@@ -590,7 +607,12 @@ while ($true) {
             }
         } catch { Log "Event error: $_" }
         Remove-Event      -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
-        Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA SilentlyContinue
+        try {
+            Register-WmiEvent -Query $wql -SourceIdentifier "USBGuardVol" -EA Stop
+        } catch {
+            Log "FATAL: WMI re-subscription failed: $_ — exiting for task restart"
+            exit 1
+        }
     }
     Log "Watcher alive"
 }
@@ -670,6 +692,18 @@ if ($null -ne $v -and $v -ne 4) {
     Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver' -Name 'Start' -Value 4 -Type DWord -Force
     $tampered = $true
 }
+
+# L5: VolumeWatcher watchdog — restart if stopped
+try {
+    $watcherTask = Get-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -EA SilentlyContinue
+    if ($watcherTask) {
+        if ($watcherTask.State -ne 'Running' -and $watcherTask.State -ne 'Ready') {
+            TLog "TAMPER L5: VolumeWatcher task state=$($watcherTask.State) - restarting"
+            Start-ScheduledTask -TaskName 'USBGuard_VolumeWatcher' -EA SilentlyContinue
+            $tampered = $true
+        }
+    }
+} catch {}
 
 if ($tampered) {
     try {
@@ -759,6 +793,75 @@ function Unblock-UsbPrinters {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  LAYER 8 — SD Card Reader (internal PCIe/SDIO)
+# ─────────────────────────────────────────────────────────────────────────────
+function Block-SdCard {
+    if (Test-Path $REG_SDBUS) {
+        Save-OriginalStart $REG_SDBUS
+        Set-RegDWord $REG_SDBUS "Start" 4
+        Write-Log "L8: SD card reader blocked (sdbus Start=4)" "SUCCESS"
+    } else { Write-Log "L8: sdbus service not present (no SD reader)" "INFO" }
+}
+function Unblock-SdCard {
+    if (Test-Path $REG_SDBUS) {
+        $restore = Get-SavedStart $REG_SDBUS
+        $startVal = if ($null -ne $restore) { $restore } else { 3 }
+        Set-RegDWord $REG_SDBUS "Start" $startVal
+        Write-Log "L8: SD card reader restored (Start=$startVal)" "SUCCESS"
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LAYER 9 — Bluetooth File Transfer (OBEX/RFCOMM)
+# ─────────────────────────────────────────────────────────────────────────────
+function Block-BluetoothFileTransfer {
+    Write-Log "L9: Blocking Bluetooth file transfer (OBEX/RFCOMM)..." "INFO"
+    foreach ($svc in @($REG_BT_OBEX, $REG_BT_RFCOMM)) {
+        if (Test-Path $svc) {
+            Save-OriginalStart $svc
+            Set-RegDWord $svc "Start" 4
+            $name = Split-Path $svc -Leaf
+            Write-Log "L9: $name disabled (Start=4)" "SUCCESS"
+        }
+    }
+    Add-GuidToDenyList $GUID_BT_OBEX
+    Write-Log "L9: Bluetooth OBEX GUID added to deny list" "SUCCESS"
+    Write-Log "L9: Bluetooth file transfer blocked. BT audio/HID unaffected." "SUCCESS"
+}
+function Unblock-BluetoothFileTransfer {
+    foreach ($svc in @($REG_BT_OBEX, $REG_BT_RFCOMM)) {
+        if (Test-Path $svc) {
+            $name    = Split-Path $svc -Leaf
+            $restore = Get-SavedStart $svc
+            $startVal = if ($null -ne $restore) { $restore } else { 3 }
+            Set-RegDWord $svc "Start" $startVal
+            Write-Log "L9: $name restored (Start=$startVal)" "SUCCESS"
+        }
+    }
+    Remove-GuidFromDenyList $GUID_BT_OBEX
+    Write-Log "L9: Bluetooth file transfer restored" "SUCCESS"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LAYER 10 — FireWire / IEEE 1394
+# ─────────────────────────────────────────────────────────────────────────────
+function Block-FireWire {
+    if (Test-Path $REG_FIREWIRE) {
+        Save-OriginalStart $REG_FIREWIRE
+        Set-RegDWord $REG_FIREWIRE "Start" 4
+        Write-Log "L10: FireWire blocked (1394ohci Start=4)" "SUCCESS"
+    } else { Write-Log "L10: 1394ohci service not present (no FireWire)" "INFO" }
+}
+function Unblock-FireWire {
+    if (Test-Path $REG_FIREWIRE) {
+        $restore = Get-SavedStart $REG_FIREWIRE
+        $startVal = if ($null -ne $restore) { $restore } else { 3 }
+        Set-RegDWord $REG_FIREWIRE "Start" $startVal
+        Write-Log "L10: FireWire restored (Start=$startVal)" "SUCCESS"
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Status
 # ─────────────────────────────────────────────────────────────────────────────
 function Get-Status {
@@ -770,6 +873,9 @@ function Get-Status {
         Thunderbolt     = "unknown"
         MtpPtp          = "unknown"
         UsbPrinters     = "unknown"
+        SdCard          = "unknown"
+        BluetoothFT     = "unknown"
+        FireWire        = "unknown"
         TamperDetection = "unknown"
         AllowlistCount  = 0
         CompanyName     = (Get-NotifyConfig).CompanyName
@@ -799,6 +905,28 @@ function Get-Status {
     } else { $s.Thunderbolt = "not_present" }
 
     $s.MtpPtp = Get-WpdStatus
+
+    # L8: SD Card
+    if (Test-Path $REG_SDBUS) {
+        $v = (Get-ItemProperty $REG_SDBUS -Name "Start" -EA SilentlyContinue).Start
+        $s.SdCard = if ($v -eq 4) { "blocked" } else { "allowed" }
+    } else { $s.SdCard = "not_present" }
+
+    # L9: Bluetooth File Transfer
+    $btBlocked = $false
+    foreach ($svc in @($REG_BT_OBEX, $REG_BT_RFCOMM)) {
+        if (Test-Path $svc) {
+            $v = (Get-ItemProperty $svc -Name "Start" -EA SilentlyContinue).Start
+            if ($v -eq 4) { $btBlocked = $true }
+        }
+    }
+    $s.BluetoothFT = if ($btBlocked) { "blocked" } else { "allowed" }
+
+    # L10: FireWire
+    if (Test-Path $REG_FIREWIRE) {
+        $v = (Get-ItemProperty $REG_FIREWIRE -Name "Start" -EA SilentlyContinue).Start
+        $s.FireWire = if ($v -eq 4) { "blocked" } else { "allowed" }
+    } else { $s.FireWire = "not_present" }
 
     $pb = $false
     if (Test-Path $REG_DENY_CLASSES) {
@@ -831,17 +959,20 @@ switch ($Action) {
     }
 
     "block" {
-        Write-Log "=== FULL BLOCK (7 layers + notification) ===" "INFO"
+        Write-Log "=== FULL BLOCK (10 layers + notification) ===" "INFO"
         Block-StorageRegistry
         Disable-AutoPlay
         Install-VolumeWatcher
         Block-UsbPrinters
         Block-WpdMtp
+        Block-SdCard
+        Block-BluetoothFileTransfer
+        Block-FireWire
         Write-Log "=== ALL LAYERS ACTIVE ===" "SUCCESS"
-        Write-Log "Blocked: USB drives, Thunderbolt, MTP (Android), PTP (iPhone/cameras), Printers" "INFO"
-        Write-Log "Preserved: Keyboards, mice, USB audio, charging" "INFO"
-        Write-AuditEntry -Action "block" -Detail "All 7 layers applied"
-        Write-EventLogEntry -Message "USBGuard: Full block applied - all 7 layers active." -EventId 1001
+        Write-Log "Blocked: USB drives, Thunderbolt, MTP (Android), PTP (iPhone/cameras), Printers, SD cards, BT file transfer, FireWire" "INFO"
+        Write-Log "Preserved: Keyboards, mice, USB audio, BT audio/HID, charging" "INFO"
+        Write-AuditEntry -Action "block" -Detail "All 10 layers applied"
+        Write-EventLogEntry -Message "USBGuard: Full block applied - all 10 layers active." -EventId 1001
     }
 
     "unblock" {
@@ -851,6 +982,9 @@ switch ($Action) {
         Remove-VolumeWatcher
         Unblock-UsbPrinters
         Unblock-WpdMtp
+        Unblock-SdCard
+        Unblock-BluetoothFileTransfer
+        Unblock-FireWire
         Write-Log "=== USB ACCESS FULLY RESTORED ===" "SUCCESS"
         Write-AuditEntry -Action "unblock" -Detail "All layers removed"
         Write-EventLogEntry -Message "USBGuard: Full unblock applied - USB access restored." -EventId 1002
@@ -892,6 +1026,40 @@ switch ($Action) {
         Write-AuditEntry -Action "unblock-printers"
         Write-EventLogEntry -Message "USBGuard: USB printers unblocked." -EventId 1008
     }
+
+    "block-sdcard" {
+        Block-SdCard
+        Write-AuditEntry -Action "block-sdcard"
+        Write-EventLogEntry -Message "USBGuard: SD card reader blocked (L8)." -EventId 1010
+    }
+    "unblock-sdcard" {
+        Unblock-SdCard
+        Write-AuditEntry -Action "unblock-sdcard"
+        Write-EventLogEntry -Message "USBGuard: SD card reader unblocked." -EventId 1011
+    }
+
+    "block-bluetooth" {
+        Block-BluetoothFileTransfer
+        Write-AuditEntry -Action "block-bluetooth"
+        Write-EventLogEntry -Message "USBGuard: Bluetooth file transfer blocked (L9)." -EventId 1012
+    }
+    "unblock-bluetooth" {
+        Unblock-BluetoothFileTransfer
+        Write-AuditEntry -Action "unblock-bluetooth"
+        Write-EventLogEntry -Message "USBGuard: Bluetooth file transfer unblocked." -EventId 1013
+    }
+
+    "block-firewire" {
+        Block-FireWire
+        Write-AuditEntry -Action "block-firewire"
+        Write-EventLogEntry -Message "USBGuard: FireWire blocked (L10)." -EventId 1014
+    }
+    "unblock-firewire" {
+        Unblock-FireWire
+        Write-AuditEntry -Action "unblock-firewire"
+        Write-EventLogEntry -Message "USBGuard: FireWire unblocked." -EventId 1015
+    }
+
     "install-watcher"  { Install-VolumeWatcher }
     "remove-watcher"   { Remove-VolumeWatcher  }
 

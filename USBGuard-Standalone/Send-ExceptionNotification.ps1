@@ -31,6 +31,12 @@
 
 .PARAMETER EventType
     "granted" or "expiring". Changes the card title/colour. Defaults to "granted".
+    When "expiring", the notification warns that the exception is about to expire
+    (default: in 2 hours). Use -RemainingHours to adjust the lead time.
+
+.PARAMETER RemainingHours
+    Hours remaining before expiry. Only used when -EventType is "expiring".
+    Defaults to 2. The notification will read "Exception expiring in N hours".
 
 .EXAMPLE
     .\Send-ExceptionNotification.ps1 -WebhookUrl "https://..." -Platform Slack
@@ -38,6 +44,10 @@
 .EXAMPLE
     .\Send-ExceptionNotification.ps1 -WebhookUrl "https://..." -MachineName "DESKTOP-ABC" `
         -GrantedBy "jsmith" -ExpiryHours 4 -Platform Teams
+
+.EXAMPLE
+    .\Send-ExceptionNotification.ps1 -WebhookUrl "https://..." -EventType expiring `
+        -RemainingHours 2 -MachineName "DESKTOP-ABC" -Platform Teams
 
 .NOTES
     No admin required. Does not touch the registry.
@@ -60,11 +70,17 @@ param(
     [string]$Platform    = "Teams",
 
     [ValidateSet("granted","expiring")]
-    [string]$EventType   = "granted"
+    [string]$EventType   = "granted",
+
+    [int]$RemainingHours = 2
 )
 
 if (-not $ExpiryTime) {
-    $ExpiryTime = (Get-Date).AddHours($ExpiryHours).ToString("HH:mm 'on' yyyy-MM-dd")
+    if ($EventType -eq "expiring") {
+        $ExpiryTime = (Get-Date).AddHours($RemainingHours).ToString("HH:mm 'on' yyyy-MM-dd")
+    } else {
+        $ExpiryTime = (Get-Date).AddHours($ExpiryHours).ToString("HH:mm 'on' yyyy-MM-dd")
+    }
 }
 
 # ── Payload builders ──────────────────────────────────────────────────────────
@@ -74,7 +90,8 @@ function Build-TeamsPayload {
         [string]$GrantedBy,
         [string]$ExpiryTime,
         [int]$ExpiryHours,
-        [string]$EventType
+        [string]$EventType,
+        [int]$RemainingHours = 2
     )
 
     $title  = if ($EventType -eq "granted") { "USB Exception Granted" }   else { "USB Exception Expiring" }
@@ -82,7 +99,7 @@ function Build-TeamsPayload {
     $body   = if ($EventType -eq "granted") {
         "USB policy has been temporarily lifted on **$MachineName**. Policy re-applies at $ExpiryTime."
     } else {
-        "The USB exception on **$MachineName** expires at $ExpiryTime. Ensure the device is removed."
+        "Exception expiring in $RemainingHours hours on **$MachineName**. Policy re-applies at $ExpiryTime. Ensure the device is removed before expiry."
     }
 
     $payload = [ordered]@{
@@ -108,7 +125,11 @@ function Build-TeamsPayload {
                                 @{ title = "Machine";    value = $MachineName }
                                 @{ title = "Granted By"; value = $GrantedBy   }
                                 @{ title = "Expires At"; value = $ExpiryTime  }
-                                @{ title = "Window";     value = "$ExpiryHours hours" }
+                                if ($EventType -eq "expiring") {
+                                    @{ title = "Remaining"; value = "$RemainingHours hours" }
+                                } else {
+                                    @{ title = "Window";    value = "$ExpiryHours hours" }
+                                }
                             )
                         },
                         @{
@@ -131,11 +152,24 @@ function Build-SlackPayload {
         [string]$GrantedBy,
         [string]$ExpiryTime,
         [int]$ExpiryHours,
-        [string]$EventType
+        [string]$EventType,
+        [int]$RemainingHours = 2
     )
 
     $emoji = if ($EventType -eq "granted") { ":warning:" } else { ":rotating_light:" }
     $title = if ($EventType -eq "granted") { "USB Exception Granted" } else { "USB Exception Expiring" }
+
+    $timeField = if ($EventType -eq "expiring") {
+        @{ type = "mrkdwn"; text = "*Remaining:*`n$RemainingHours hours" }
+    } else {
+        @{ type = "mrkdwn"; text = "*Window:*`n$ExpiryHours hours" }
+    }
+
+    $contextMsg = if ($EventType -eq "expiring") {
+        "USBGuard | Exception expiring in $RemainingHours hours. Remove USB devices before policy re-applies."
+    } else {
+        "USBGuard | Re-apply Fixlets 1+2+3 after the exception window."
+    }
 
     $payload = @{
         blocks = @(
@@ -149,7 +183,7 @@ function Build-SlackPayload {
                     @{ type = "mrkdwn"; text = "*Machine:*`n$MachineName"   }
                     @{ type = "mrkdwn"; text = "*Granted By:*`n$GrantedBy"  }
                     @{ type = "mrkdwn"; text = "*Expires At:*`n$ExpiryTime" }
-                    @{ type = "mrkdwn"; text = "*Window:*`n$ExpiryHours hours" }
+                    $timeField
                 )
             },
             @{
@@ -158,7 +192,7 @@ function Build-SlackPayload {
             @{
                 type = "context"
                 elements = @(
-                    @{ type = "mrkdwn"; text = "USBGuard | Re-apply Fixlets 1+2+3 after the exception window." }
+                    @{ type = "mrkdwn"; text = $contextMsg }
                 )
             }
         )
@@ -178,8 +212,8 @@ function Send-WebhookNotification {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 $payload = switch ($Platform) {
-    "Teams" { Build-TeamsPayload -MachineName $MachineName -GrantedBy $GrantedBy -ExpiryTime $ExpiryTime -ExpiryHours $ExpiryHours -EventType $EventType }
-    "Slack" { Build-SlackPayload -MachineName $MachineName -GrantedBy $GrantedBy -ExpiryTime $ExpiryTime -ExpiryHours $ExpiryHours -EventType $EventType }
+    "Teams" { Build-TeamsPayload -MachineName $MachineName -GrantedBy $GrantedBy -ExpiryTime $ExpiryTime -ExpiryHours $ExpiryHours -EventType $EventType -RemainingHours $RemainingHours }
+    "Slack" { Build-SlackPayload -MachineName $MachineName -GrantedBy $GrantedBy -ExpiryTime $ExpiryTime -ExpiryHours $ExpiryHours -EventType $EventType -RemainingHours $RemainingHours }
 }
 
 Write-Host "Sending $EventType notification to $Platform for machine: $MachineName"

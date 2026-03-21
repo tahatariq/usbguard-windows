@@ -1,8 +1,8 @@
 ; ============================================================================
-; USBGuard - BigFix Fixlet 1: Apply Full USB Block Policy (v4 — incl. MTP/PTP)
+; USBGuard - BigFix Fixlet 1: Apply Full USB Block Policy (v5 — incl. MTP/PTP)
 ; ============================================================================
 ; Fixlet Name:   USBGuard - Block USB Storage, MTP/PTP, and Printers
-; Description:   Applies all 7 layers:
+; Description:   Applies all 10 layers:
 ;                L1  USBSTOR Start=4
 ;                L2  WriteProtect=1
 ;                L3  DenyDeviceClasses (disk/cdrom/floppy/printer GUIDs)
@@ -11,6 +11,10 @@
 ;                L7  WPD services disabled + MTP/PTP/Imaging GUIDs denied
 ;                    Blocks: Android MTP, iPhone/iTunes PTP, cameras,
 ;                            media players, any app using WPD transport
+;                L8  SD card reader blocked (sdbus Start=4)
+;                L9  Bluetooth file transfer blocked (BthOBEX Start=4
+;                    + Bluetooth GUID denied)
+;                L10 FireWire blocked (1394ohci Start=4)
 ;                NOT blocked: keyboards, mice, USB audio, USB charging
 ; Run As:        LocalSystem
 ; Idempotent:    Yes
@@ -38,6 +42,7 @@ waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Execut
 "$GUID_PRINT   = '{4D36E979-E325-11CE-BFC1-08002BE10318}';" ^
 "$GUID_WPD     = '{EEC5AD98-8080-425F-922A-DABF3DE3F69A}';" ^
 "$GUID_IMAGING = '{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}';" ^
+"$GUID_BTOOTH  = '{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}';" ^
 "" ^
 "# ── Helpers ──────────────────────────────────────────────────────────────────" ^
 "function EP($p) { if (-not (Test-Path $p)) { New-Item $p -Force | Out-Null } }" ^
@@ -107,11 +112,21 @@ waithidden powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Execut
 "  try { $sv = Get-Service $s -EA SilentlyContinue; if ($sv -and $sv.Status -eq 'Running') { Stop-Service $s -Force -EA SilentlyContinue; Write-Host \"Stopped: $s\" } } catch {}" ^
 "};" ^
 "" ^
+"# ── L8: SD Card Reader ─────────────────────────────────────────────────────" ^
+"if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\sdbus') { SD 'HKLM:\SYSTEM\CurrentControlSet\Services\sdbus' 'Start' 4 };" ^
+"" ^
+"# ── L9: Bluetooth File Transfer ────────────────────────────────────────────" ^
+"if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX') { SD 'HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX' 'Start' 4 };" ^
+"AG $GUID_BTOOTH;" ^
+"" ^
+"# ── L10: FireWire ──────────────────────────────────────────────────────────" ^
+"if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci') { SD 'HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci' 'Start' 4 };" ^
+"" ^
 "# Eject any currently mounted removable volumes" ^
 "$vols = Get-WmiObject Win32_Volume -Filter 'DriveType=2' -EA SilentlyContinue;" ^
 "if ($vols) { foreach ($v in $vols) { try { $v.Dismount($true,$false) | Out-Null } catch {} } };" ^
 "" ^
-"Write-Host 'USBGuard v4: All 7 layers applied. Storage + MTP/PTP + Printers blocked.'"
+"Write-Host 'USBGuard v5: All 10 layers applied. Storage + MTP/PTP + Printers + SD + BT + FireWire blocked.'"
 
 if {exit code of action != 0}
     action requires restart
