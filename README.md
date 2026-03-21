@@ -173,6 +173,7 @@ Fixlet 5 provides per-layer Analysis Properties for Web Reports and custom Dashb
 | `USBGuard_L3_DenyClasses` | ENFORCED / OFF |
 | `USBGuard_L4_AutoPlay` | KILLED / LIVE |
 | `USBGuard_L5_Watcher` | INSTALLED / MISSING |
+| `USBGuard_L6_Thunderbolt` | BLOCKED / OPEN / NOT_PRESENT |
 | `USBGuard_L7_WPD_MTP` | BLOCKED / OPEN / NOT_PRESENT |
 | `USBGuard_Overall` | **COMPLIANT** / **NON-COMPLIANT** |
 

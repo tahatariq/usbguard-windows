@@ -166,7 +166,9 @@ All actions covered: `status`, `block`, `unblock`, `block-storage`, `unblock-sto
 
 #### Fixlet 5 (ComplianceDetection) ✅
 - Relevance-only (no action) ✅
-- Analysis Properties cover all 7 layers ✅
+- Analysis Properties cover all 7 layers ✅ (L6 `USBGuard_L6_Thunderbolt` added)
+- L6 compliance relevance: only triggered when thunderbolt key exists AND Start != 4 (safe on non-Thunderbolt hardware) ✅
+- L6 in `USBGuard_Overall`: `not exists key ... OR Start=4` — machines without Thunderbolt are not penalised ✅
 - `USBGuard_Overall` = COMPLIANT / NON-COMPLIANT aggregate ✅
 
 ---
@@ -198,11 +200,13 @@ All actions covered: `status`, `block`, `unblock`, `block-storage`, `unblock-sto
 - Notification config save/retrieve ✅
 - `{COMPANY}` placeholder replacement ✅
 
+#### Unit Tests — WpdMtp.Tests.ps1 ✅ (added)
+- `Get-WpdStatus_Test`: blocked/partial (GUID only)/partial (service only)/allowed/absent ✅
+- `Block-WpdMtp_Test`: GUIDs added, deny flags set, service Start=4, original saved, idempotent ✅
+- `Unblock-WpdMtp_Test`: GUIDs removed, service restored from saved, fallback to 3, stay-disabled, deny flags cleared, roundtrip ✅
+
 #### Test Coverage Gaps ⚠️
-- No tests for `Get-WpdStatus` (L7 status logic)
-- No tests for `Block-WpdMtp` / `Unblock-WpdMtp` end-to-end
 - No tests for `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM/task scheduler)
-- `Unblock-StorageRegistry_Test` helper hardcodes `Start=3` instead of restoring saved value (test-only simplification — production code is correct)
 - HTA JavaScript not unit-tested (manual testing required)
 
 ---

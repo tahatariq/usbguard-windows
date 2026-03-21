@@ -227,7 +227,9 @@ function Block-StorageRegistry_Test {
 function Unblock-StorageRegistry_Test {
     param([string]$Path, [string]$SavedPath)
     if (Test-Path $Path) {
-        Set-ItemProperty -Path $Path -Name "Start" -Value 3 -Type DWord -Force
+        $original = Get-SavedStart_Test $Path $SavedPath
+        $restore = if ($null -ne $original) { $original } else { 3 }
+        Set-ItemProperty -Path $Path -Name "Start" -Value $restore -Type DWord -Force
     }
 }
 

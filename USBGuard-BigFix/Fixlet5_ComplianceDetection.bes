@@ -34,6 +34,11 @@
 ;   not exists task "USBGuard_VolumeWatcher" of task scheduler of operating system
 ; )
 ; OR (
+;   /* L6 - Thunderbolt (only relevant if hardware is present) */
+;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry
+;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry as string)) != 4
+; )
+; OR (
 ;   /* L7 - WPD filesystem driver must be disabled */
 ;   exists key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry
 ;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) != 4
@@ -64,6 +69,11 @@
 ; Name: USBGuard_L5_Watcher
 ; Value: if (exists task "USBGuard_VolumeWatcher" of task scheduler of operating system) then "INSTALLED" else "MISSING"
 ;
+; Name: USBGuard_L6_Thunderbolt
+; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry)
+;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
+;   else "NOT_PRESENT"
+;
 ; Name: USBGuard_L7_WPD_MTP
 ; Value: if (exists key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry)
 ;   then (if (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4 then "BLOCKED" else "OPEN")
@@ -76,6 +86,8 @@
 ;   AND (integer value of (value "DenyDeviceClasses" of key "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions" of native registry as string)) = 1
 ;   AND (integer value of (value "NoDriveTypeAutoRun" of key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" of native registry as string)) = 255
 ;   AND (exists task "USBGuard_VolumeWatcher" of task scheduler of operating system)
+;   AND (not exists key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry
+;        OR (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt" of native registry as string)) = 4)
 ;   AND (integer value of (value "Start" of key "HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" of native registry as string)) = 4
 ; ) then "COMPLIANT" else "NON-COMPLIANT"
 ;
