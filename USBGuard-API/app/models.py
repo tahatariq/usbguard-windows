@@ -5,8 +5,7 @@ Pydantic v2 request and response models for the USBGuard API.
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, field_validator, model_validator
-import re
+from pydantic import BaseModel, field_validator
 
 
 class CreateExceptionRequest(BaseModel):
@@ -34,13 +33,10 @@ class CreateExceptionRequest(BaseModel):
 
     @field_validator("ritm")
     @classmethod
-    def ritm_format(cls, v: str) -> str:
-        r"""Validate that RITM matches pattern RITM\d{7} (case-insensitive)."""
-        if not re.fullmatch(r"RITM\d{7}", v, re.IGNORECASE):
-            raise ValueError(
-                f"ritm must match the pattern RITM followed by 7 digits (e.g. RITM0012345). Got: '{v}'"
-            )
-        return v.upper()
+    def ritm_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("ritm must not be empty.")
+        return v.strip()
 
     @field_validator("number_of_days")
     @classmethod

@@ -60,27 +60,15 @@ class TestCreateExceptionRequest:
         with pytest.raises(ValidationError):
             CreateExceptionRequest(**payload)
 
-    def test_ritm_valid_uppercase(self):
-        """RITM0012345 (uppercase) should be accepted."""
-        req = CreateExceptionRequest(**{**VALID_PAYLOAD, "ritm": "RITM0012345"})
-        assert req.ritm == "RITM0012345"
+    def test_ritm_any_format_accepted(self):
+        """Any non-empty RITM string is accepted (format is not validated)."""
+        for ritm in ("RITM0012345", "RITM00000001", "INC0012345", "CHG9999999"):
+            req = CreateExceptionRequest(**{**VALID_PAYLOAD, "ritm": ritm})
+            assert req.ritm == ritm
 
-    def test_ritm_valid_lowercase(self):
-        """ritm0012345 (lowercase) should be accepted and normalised to uppercase."""
-        req = CreateExceptionRequest(**{**VALID_PAYLOAD, "ritm": "ritm0012345"})
-        assert req.ritm == "RITM0012345"
-
-    def test_ritm_invalid_prefix_raises(self):
-        """INC0012345 does not match the RITM pattern."""
-        payload = {**VALID_PAYLOAD, "ritm": "INC0012345"}
-        with pytest.raises(ValidationError) as exc_info:
-            CreateExceptionRequest(**payload)
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("ritm",) for e in errors)
-
-    def test_ritm_too_few_digits_raises(self):
-        """RITM012345 has only 6 digits — needs 7."""
-        payload = {**VALID_PAYLOAD, "ritm": "RITM012345"}
+    def test_ritm_empty_raises(self):
+        """An empty ritm should fail validation."""
+        payload = {**VALID_PAYLOAD, "ritm": ""}
         with pytest.raises(ValidationError):
             CreateExceptionRequest(**payload)
 

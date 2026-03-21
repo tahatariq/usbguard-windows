@@ -229,7 +229,7 @@ Tests are organised into three files:
 | File | What it covers |
 |---|---|
 | `tests/test_date_parser.py` | All 5 supported formats, rejection of unsupported/ambiguous formats, past-date correction |
-| `tests/test_models.py` | Pydantic validation — required fields, RITM pattern, day range |
+| `tests/test_models.py` | Pydantic validation — required fields, non-empty RITM, day range |
 | `tests/test_bigfix.py` | Scheduling offset calculation, PowerShell base64 encoding |
 | `tests/test_api.py` | All three API endpoints, auth rejection, BigFix error handling |
 
@@ -306,7 +306,7 @@ duration, then automatically expires.
 |---|---|---|---|
 | `pc_name` | string | Yes | Exact computer name as enrolled in BigFix. |
 | `username` | string | Yes | AD username of the person receiving access. |
-| `ritm` | string | Yes | ServiceNow RITM number, e.g. `RITM0012345`. Must match `RITM\d{7}` (case-insensitive). |
+| `ritm` | string | Yes | ServiceNow RITM number, e.g. `RITM0012345`. Any non-empty string is accepted (digit count varies by ServiceNow instance). |
 | `start_date` | string | Yes | When the exception starts. Five formats accepted — see table below. Anything else is rejected. Defaults to today if unparseable or in the past. |
 | `number_of_days` | integer | Yes | Duration in days. 1–365. |
 

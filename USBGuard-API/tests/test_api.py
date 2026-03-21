@@ -243,9 +243,9 @@ class TestCreateException:
         resp = client.post("/api/exceptions", json=payload, headers=HEADERS)
         assert resp.status_code == 422
 
-    def test_invalid_ritm_returns_422(self, client):
-        """INC-style RITM fails Pydantic validation → 422."""
-        payload = {**_valid_post_payload(), "ritm": "INC0012345"}
+    def test_empty_ritm_returns_422(self, client):
+        """Empty ritm fails Pydantic validation → 422."""
+        payload = {**_valid_post_payload(), "ritm": ""}
         resp = client.post("/api/exceptions", json=payload, headers=HEADERS)
         assert resp.status_code == 422
 
