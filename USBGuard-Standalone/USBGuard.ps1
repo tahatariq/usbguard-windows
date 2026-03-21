@@ -661,7 +661,7 @@ switch ($Action) {
         Write-Log "Blocked: USB drives, Thunderbolt, MTP (Android), PTP (iPhone/cameras), Printers" "INFO"
         Write-Log "Preserved: Keyboards, mice, USB audio, charging" "INFO"
         Write-AuditEntry -Action "block" -Detail "All 7 layers applied"
-        Write-EventLogEntry -Message "USBGuard: Full block applied — all 7 layers active." -EventId 1001
+        Write-EventLogEntry -Message "USBGuard: Full block applied - all 7 layers active." -EventId 1001
     }
 
     "unblock" {
@@ -673,7 +673,7 @@ switch ($Action) {
         Unblock-WpdMtp
         Write-Log "=== USB ACCESS FULLY RESTORED ===" "SUCCESS"
         Write-AuditEntry -Action "unblock" -Detail "All layers removed"
-        Write-EventLogEntry -Message "USBGuard: Full unblock applied — USB access restored." -EventId 1002
+        Write-EventLogEntry -Message "USBGuard: Full unblock applied - USB access restored." -EventId 1002
     }
 
     "block-storage" {
