@@ -12,6 +12,11 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+# Opt into Node.js 24 now — all JS-based actions in this workflow run on Node 24.
+# GitHub will force this from June 2026; opting in early surfaces any issues beforehand.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   syntax-check:
     name: PowerShell Syntax Check
