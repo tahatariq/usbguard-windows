@@ -36,7 +36,7 @@ BeforeAll {
     }
 
     function Build-HtmlReport_Test {
-        param([ordered]$StatusMap, [string]$TamperStatus = "running", [int]$AllowlistCount = 0, [string]$MachineName = "TEST-PC")
+        param($StatusMap, [string]$TamperStatus = "running", [int]$AllowlistCount = 0, [string]$MachineName = "TEST-PC")
 
         $blocked = ($StatusMap.Values | Where-Object { $_ -eq "blocked" }).Count
         $total   = ($StatusMap.Values | Where-Object { $_ -ne "not_present" }).Count
