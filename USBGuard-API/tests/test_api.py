@@ -237,9 +237,9 @@ class TestCreateException:
         resp = client.post("/api/exceptions", json=payload, headers=HEADERS)
         assert resp.status_code == 422
 
-    def test_number_of_days_31_returns_422(self, client):
-        """number_of_days=31 fails Pydantic validation → 422."""
-        payload = {**_valid_post_payload(), "number_of_days": 31}
+    def test_number_of_days_366_returns_422(self, client):
+        """number_of_days=366 exceeds the maximum of 365 → 422."""
+        payload = {**_valid_post_payload(), "number_of_days": 366}
         resp = client.post("/api/exceptions", json=payload, headers=HEADERS)
         assert resp.status_code == 422
 

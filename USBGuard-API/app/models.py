@@ -45,8 +45,8 @@ class CreateExceptionRequest(BaseModel):
     @field_validator("number_of_days")
     @classmethod
     def days_in_range(cls, v: int) -> int:
-        if v < 1 or v > 30:
-            raise ValueError("number_of_days must be between 1 and 30 (inclusive).")
+        if v < 1 or v > 365:
+            raise ValueError("number_of_days must be between 1 and 365 (inclusive).")
         return v
 
 

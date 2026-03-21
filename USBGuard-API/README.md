@@ -308,7 +308,7 @@ duration, then automatically expires.
 | `username` | string | Yes | AD username of the person receiving access. |
 | `ritm` | string | Yes | ServiceNow RITM number, e.g. `RITM0012345`. Must match `RITM\d{7}` (case-insensitive). |
 | `start_date` | string | Yes | When the exception starts. Many formats accepted — see table below. Defaults to today if unparseable or in the past. |
-| `number_of_days` | integer | Yes | Duration in days. 1–30. |
+| `number_of_days` | integer | Yes | Duration in days. 1–365. |
 
 **Accepted date formats:**
 

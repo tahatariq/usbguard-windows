@@ -32,9 +32,9 @@ class TestCreateExceptionRequest:
             CreateExceptionRequest(**payload)
         assert "number_of_days" in str(exc_info.value).lower() or "1" in str(exc_info.value)
 
-    def test_number_of_days_31_raises(self):
-        """number_of_days=31 exceeds the maximum of 30."""
-        payload = {**VALID_PAYLOAD, "number_of_days": 31}
+    def test_number_of_days_366_raises(self):
+        """number_of_days=366 exceeds the maximum of 365."""
+        payload = {**VALID_PAYLOAD, "number_of_days": 366}
         with pytest.raises(ValidationError):
             CreateExceptionRequest(**payload)
 
@@ -44,9 +44,9 @@ class TestCreateExceptionRequest:
         assert req.number_of_days == 1
 
     def test_number_of_days_boundary_high(self):
-        """number_of_days=30 is the maximum valid value."""
-        req = CreateExceptionRequest(**{**VALID_PAYLOAD, "number_of_days": 30})
-        assert req.number_of_days == 30
+        """number_of_days=365 is the maximum valid value."""
+        req = CreateExceptionRequest(**{**VALID_PAYLOAD, "number_of_days": 365})
+        assert req.number_of_days == 365
 
     def test_empty_pc_name_raises(self):
         """An empty pc_name should fail validation."""
