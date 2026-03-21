@@ -1,5 +1,95 @@
 BeforeAll {
     $ErrorActionPreference = "Continue"
+
+    function Get-WpdStatus_Test {
+        param([string]$denyClassesPath, [string]$svcPath, [string]$wpdGuid)
+
+        $guidBlocked = $false
+        if (Test-Path $denyClassesPath) {
+            foreach ($k in (Get-Item $denyClassesPath -EA SilentlyContinue).Property) {
+                if ((Get-ItemProperty $denyClassesPath -Name $k -EA SilentlyContinue).$k -eq $wpdGuid) {
+                    $guidBlocked = $true; break
+                }
+            }
+        }
+        $svcDisabled = $false
+        if (Test-Path $svcPath) {
+            $v = (Get-ItemProperty $svcPath -Name "Start" -EA SilentlyContinue).Start
+            $svcDisabled = ($v -eq 4)
+        }
+        if ($guidBlocked -and $svcDisabled) { return "blocked" }
+        if ($guidBlocked -or $svcDisabled)  { return "partial" }
+        return "allowed"
+    }
+
+    function Add-GuidToTestDenyList {
+        param([string]$denyPath, [string]$guid)
+        if (-not (Test-Path $denyPath)) { New-Item $denyPath -Force | Out-Null }
+        $props = (Get-Item $denyPath -EA SilentlyContinue).Property
+        foreach ($p in $props) {
+            if ((Get-ItemProperty $denyPath -Name $p -EA SilentlyContinue).$p -eq $guid) { return }
+        }
+        $next = 1
+        if ($props) { $next = (($props | ForEach-Object { try { [int]$_ } catch { 0 } } | Measure-Object -Maximum).Maximum) + 1 }
+        Set-ItemProperty $denyPath -Name "$next" -Value $guid -Type String
+    }
+
+    function Remove-GuidFromTestDenyList {
+        param([string]$denyPath, [string]$guid)
+        if (-not (Test-Path $denyPath)) { return }
+        $props = (Get-Item $denyPath -EA SilentlyContinue).Property
+        foreach ($p in $props) {
+            if ((Get-ItemProperty $denyPath -Name $p -EA SilentlyContinue).$p -eq $guid) {
+                Remove-ItemProperty $denyPath -Name $p -EA SilentlyContinue
+            }
+        }
+    }
+
+    function Block-WpdMtp_Test {
+        param([string]$denyBasePath, [string]$denyClassesPath, [string]$savedPath, [string[]]$svcPaths, [string[]]$guids)
+
+        if (-not (Test-Path $denyBasePath)) { New-Item $denyBasePath -Force | Out-Null }
+        Set-ItemProperty $denyBasePath -Name "DenyDeviceClasses"            -Value 1 -Type DWord -Force
+        Set-ItemProperty $denyBasePath -Name "DenyDeviceClassesRetroactive" -Value 1 -Type DWord -Force
+        if (-not (Test-Path $denyClassesPath)) { New-Item $denyClassesPath -Force | Out-Null }
+
+        foreach ($guid in $guids) { Add-GuidToTestDenyList $denyClassesPath $guid }
+
+        foreach ($svcPath in $svcPaths) {
+            if (-not (Test-Path $svcPath)) { continue }
+            $key = $svcPath -replace 'HKLM:\\','' -replace '\\','_'
+            if (-not (Test-Path $savedPath)) { New-Item $savedPath -Force | Out-Null }
+            if (-not (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue)) {
+                $cur = (Get-ItemProperty $svcPath -Name "Start" -EA SilentlyContinue).Start
+                if ($null -ne $cur) { Set-ItemProperty $savedPath -Name $key -Value $cur -Type DWord -Force }
+            }
+            Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord -Force
+        }
+    }
+
+    function Unblock-WpdMtp_Test {
+        param([string]$denyBasePath, [string]$denyClassesPath, [string]$savedPath, [string[]]$svcPaths, [string[]]$guids)
+
+        foreach ($guid in $guids) { Remove-GuidFromTestDenyList $denyClassesPath $guid }
+
+        foreach ($svcPath in $svcPaths) {
+            if (-not (Test-Path $svcPath)) { continue }
+            $key = $svcPath -replace 'HKLM:\\','' -replace '\\','_'
+            $original = if (Test-Path $savedPath) { (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue).$key } else { $null }
+            $restore = if ($null -ne $original) { $original } else { 3 }
+            Set-ItemProperty $svcPath -Name "Start" -Value $restore -Type DWord -Force
+        }
+
+        if (Test-Path $denyClassesPath) {
+            $remaining = (Get-Item $denyClassesPath -EA SilentlyContinue).Property
+            if (-not $remaining) {
+                if (Test-Path $denyBasePath) {
+                    Set-ItemProperty $denyBasePath -Name "DenyDeviceClasses"            -Value 0 -Type DWord -Force
+                    Set-ItemProperty $denyBasePath -Name "DenyDeviceClassesRetroactive" -Value 0 -Type DWord -Force
+                }
+            }
+        }
+    }
 }
 
 Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
@@ -11,9 +101,9 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
         $savedPath       = "$testRegBase\SavedStart"
         $svcPath         = "$testRegBase\Services\WpdFilesystemDriver"
 
-        $GUID_WPD       = "{EEC5AD98-8080-425F-922A-DABF3DE3F69A}"
-        $GUID_IMAGING   = "{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}"
-        $GUID_WPD_PRINT = "{70AE35D8-BF10-11D0-AC45-0000C0B0BFCB}"
+        $GUID_WPD        = "{EEC5AD98-8080-425F-922A-DABF3DE3F69A}"
+        $GUID_IMAGING    = "{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}"
+        $GUID_WPD_PRINT  = "{70AE35D8-BF10-11D0-AC45-0000C0B0BFCB}"
     }
 
     BeforeEach {
@@ -48,7 +138,6 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
         It "Should return 'partial' when service Start=4 but GUID not in deny list" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
-            # deny list exists but does not contain the WPD GUID
             New-Item $denyClassesPath -Force | Out-Null
 
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "partial"
@@ -61,8 +150,7 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "allowed"
         }
 
-        It "Should return 'allowed' when deny list path does not exist and service absent" {
-            # Neither path exists at all
+        It "Should return 'allowed' when neither path exists" {
             Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD | Should -Be "allowed"
         }
     }
@@ -112,19 +200,18 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Set-ItemProperty $svcPath -Name "Start" -Value 3 -Type DWord
 
             Block-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) @($GUID_WPD)
-            # Change the live value, then block again — saved should not be overwritten
             Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
             Block-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) @($GUID_WPD)
 
             $key = $svcPath -replace 'HKLM:\\','' -replace '\\','_'
             $saved = (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue).$key
-            $saved | Should -Be 3  # original, not the intermediate 4
+            $saved | Should -Be 3
 
             $props = (Get-Item $denyClassesPath -EA SilentlyContinue).Property
             $count = ($props | Where-Object {
                 (Get-ItemProperty $denyClassesPath -Name $_ -EA SilentlyContinue).$_ -eq $GUID_WPD
             }).Count
-            $count | Should -Be 1  # no duplicate
+            $count | Should -Be 1
         }
     }
 
@@ -157,7 +244,6 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
         It "Should fall back to Start=3 when no saved value exists" {
             New-Item $svcPath -Force | Out-Null
             Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
-            # no saved value — savedPath does not exist
 
             Unblock-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) @($GUID_WPD)
 
@@ -166,12 +252,11 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
 
         It "Should preserve a service that was originally disabled (Start=4)" {
             New-Item $svcPath -Force | Out-Null
-            Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord  # disabled before USBGuard
+            Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord
 
             Block-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) @($GUID_WPD)
             Unblock-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) @($GUID_WPD)
 
-            # Should stay 4 — it was already disabled before we touched it
             (Get-ItemProperty $svcPath -Name "Start").Start | Should -Be 4
         }
 
@@ -196,98 +281,6 @@ Describe "WPD/MTP/PTP (Layer 7) — Status Detection and Block/Unblock" {
             Unblock-WpdMtp_Test $denyBasePath $denyClassesPath $savedPath @($svcPath) $guids
             $finalStatus = Get-WpdStatus_Test $denyClassesPath $svcPath $GUID_WPD
             $finalStatus | Should -Be "allowed"
-        }
-    }
-}
-
-# ── Test helper functions ──────────────────────────────────────────────────────
-
-function Get-WpdStatus_Test {
-    param([string]$denyClassesPath, [string]$svcPath, [string]$wpdGuid)
-
-    $guidBlocked = $false
-    if (Test-Path $denyClassesPath) {
-        foreach ($k in (Get-Item $denyClassesPath -EA SilentlyContinue).Property) {
-            if ((Get-ItemProperty $denyClassesPath -Name $k -EA SilentlyContinue).$k -eq $wpdGuid) {
-                $guidBlocked = $true; break
-            }
-        }
-    }
-    $svcDisabled = $false
-    if (Test-Path $svcPath) {
-        $v = (Get-ItemProperty $svcPath -Name "Start" -EA SilentlyContinue).Start
-        $svcDisabled = ($v -eq 4)
-    }
-    if ($guidBlocked -and $svcDisabled) { return "blocked" }
-    if ($guidBlocked -or $svcDisabled)  { return "partial" }
-    return "allowed"
-}
-
-function Add-GuidToTestDenyList {
-    param([string]$denyPath, [string]$guid)
-    if (-not (Test-Path $denyPath)) { New-Item $denyPath -Force | Out-Null }
-    $props = (Get-Item $denyPath -EA SilentlyContinue).Property
-    foreach ($p in $props) {
-        if ((Get-ItemProperty $denyPath -Name $p -EA SilentlyContinue).$p -eq $guid) { return }
-    }
-    $next = 1
-    if ($props) { $next = (($props | ForEach-Object { try { [int]$_ } catch { 0 } } | Measure-Object -Maximum).Maximum) + 1 }
-    Set-ItemProperty $denyPath -Name "$next" -Value $guid -Type String
-}
-
-function Remove-GuidFromTestDenyList {
-    param([string]$denyPath, [string]$guid)
-    if (-not (Test-Path $denyPath)) { return }
-    $props = (Get-Item $denyPath -EA SilentlyContinue).Property
-    foreach ($p in $props) {
-        if ((Get-ItemProperty $denyPath -Name $p -EA SilentlyContinue).$p -eq $guid) {
-            Remove-ItemProperty $denyPath -Name $p -EA SilentlyContinue
-        }
-    }
-}
-
-function Block-WpdMtp_Test {
-    param([string]$denyBasePath, [string]$denyClassesPath, [string]$savedPath, [string[]]$svcPaths, [string[]]$guids)
-
-    if (-not (Test-Path $denyBasePath)) { New-Item $denyBasePath -Force | Out-Null }
-    Set-ItemProperty $denyBasePath -Name "DenyDeviceClasses"            -Value 1 -Type DWord -Force
-    Set-ItemProperty $denyBasePath -Name "DenyDeviceClassesRetroactive" -Value 1 -Type DWord -Force
-    if (-not (Test-Path $denyClassesPath)) { New-Item $denyClassesPath -Force | Out-Null }
-
-    foreach ($guid in $guids) { Add-GuidToTestDenyList $denyClassesPath $guid }
-
-    foreach ($svcPath in $svcPaths) {
-        if (-not (Test-Path $svcPath)) { continue }
-        $key = $svcPath -replace 'HKLM:\\','' -replace '\\','_'
-        if (-not (Test-Path $savedPath)) { New-Item $savedPath -Force | Out-Null }
-        if (-not (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue)) {
-            $cur = (Get-ItemProperty $svcPath -Name "Start" -EA SilentlyContinue).Start
-            if ($null -ne $cur) { Set-ItemProperty $savedPath -Name $key -Value $cur -Type DWord -Force }
-        }
-        Set-ItemProperty $svcPath -Name "Start" -Value 4 -Type DWord -Force
-    }
-}
-
-function Unblock-WpdMtp_Test {
-    param([string]$denyBasePath, [string]$denyClassesPath, [string]$savedPath, [string[]]$svcPaths, [string[]]$guids)
-
-    foreach ($guid in $guids) { Remove-GuidFromTestDenyList $denyClassesPath $guid }
-
-    foreach ($svcPath in $svcPaths) {
-        if (-not (Test-Path $svcPath)) { continue }
-        $key = $svcPath -replace 'HKLM:\\','' -replace '\\','_'
-        $original = if (Test-Path $savedPath) { (Get-ItemProperty $savedPath -Name $key -EA SilentlyContinue).$key } else { $null }
-        $restore = if ($null -ne $original) { $original } else { 3 }
-        Set-ItemProperty $svcPath -Name "Start" -Value $restore -Type DWord -Force
-    }
-
-    if (Test-Path $denyClassesPath) {
-        $remaining = (Get-Item $denyClassesPath -EA SilentlyContinue).Property
-        if (-not $remaining) {
-            if (Test-Path $denyBasePath) {
-                Set-ItemProperty $denyBasePath -Name "DenyDeviceClasses"            -Value 0 -Type DWord -Force
-                Set-ItemProperty $denyBasePath -Name "DenyDeviceClassesRetroactive" -Value 0 -Type DWord -Force
-            }
         }
     }
 }

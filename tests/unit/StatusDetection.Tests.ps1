@@ -1,5 +1,50 @@
 BeforeAll {
     $ErrorActionPreference = "Continue"
+
+    function Get-Status_Test {
+        param(
+            [string]$RegPath,
+            [switch]$CheckWriteProtect,
+            [switch]$CheckAutoPlay,
+            [switch]$CheckThunderbolt
+        )
+
+        $status = @{
+            UsbStorage     = "unknown"
+            WriteProtect   = "unknown"
+            AutoPlayKilled = "unknown"
+            Thunderbolt    = "unknown"
+        }
+
+        if (Test-Path $RegPath) {
+            $v = (Get-ItemProperty $RegPath -Name "Start" -EA SilentlyContinue).Start
+            if ($v -eq 4) { $status.UsbStorage = "blocked" }
+            elseif ($v -eq 3) { $status.UsbStorage = "allowed" }
+        }
+
+        if ($CheckWriteProtect) {
+            if (Test-Path $RegPath) {
+                $v = (Get-ItemProperty $RegPath -Name "WriteProtect" -EA SilentlyContinue).WriteProtect
+                $status.WriteProtect = if ($v -eq 1) { "active" } else { "inactive" }
+            } else { $status.WriteProtect = "inactive" }
+        }
+
+        if ($CheckAutoPlay) {
+            if (Test-Path $RegPath) {
+                $v = (Get-ItemProperty $RegPath -Name "NoDriveTypeAutoRun" -EA SilentlyContinue).NoDriveTypeAutoRun
+                $status.AutoPlayKilled = if ($v -eq 0xFF) { "disabled" } else { "enabled" }
+            }
+        }
+
+        if ($CheckThunderbolt) {
+            if (Test-Path $RegPath) {
+                $v = (Get-ItemProperty $RegPath -Name "Start" -EA SilentlyContinue).Start
+                $status.Thunderbolt = if ($v -eq 4) { "blocked" } else { "allowed" }
+            } else { $status.Thunderbolt = "not_present" }
+        }
+
+        return $status
+    }
 }
 
 Describe "Status Detection" {
@@ -13,7 +58,7 @@ Describe "Status Detection" {
             Remove-Item $testRegBase -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
-    
+
     AfterEach {
         if (Test-Path $testRegBase) {
             Remove-Item $testRegBase -Recurse -Force -ErrorAction SilentlyContinue
@@ -25,7 +70,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\SYSTEM\CurrentControlSet\Services\USBSTOR"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "Start" -Value 4 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath
             $status.UsbStorage | Should -Be "blocked"
         }
@@ -34,7 +79,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\SYSTEM\CurrentControlSet\Services\USBSTOR"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "Start" -Value 3 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath
             $status.UsbStorage | Should -Be "allowed"
         }
@@ -50,7 +95,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\StorageDevicePolicies"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "WriteProtect" -Value 1 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath -CheckWriteProtect
             $status.WriteProtect | Should -Be "active"
         }
@@ -59,7 +104,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\StorageDevicePolicies"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "WriteProtect" -Value 0 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath -CheckWriteProtect
             $status.WriteProtect | Should -Be "inactive"
         }
@@ -75,7 +120,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\AutoPlay"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "NoDriveTypeAutoRun" -Value 0xFF -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath -CheckAutoPlay
             $status.AutoPlayKilled | Should -Be "disabled"
         }
@@ -84,7 +129,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\AutoPlay"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "NoDriveTypeAutoRun" -Value 0x91 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath -CheckAutoPlay
             $status.AutoPlayKilled | Should -Be "enabled"
         }
@@ -95,7 +140,7 @@ Describe "Status Detection" {
             $regPath = "$testRegBase\SYSTEM\CurrentControlSet\Services\thunderbolt"
             New-Item $regPath -Force | Out-Null
             Set-ItemProperty $regPath -Name "Start" -Value 4 -Type DWord
-            
+
             $status = Get-Status_Test -RegPath $regPath -CheckThunderbolt
             $status.Thunderbolt | Should -Be "blocked"
         }
@@ -119,59 +164,13 @@ Describe "Status Detection" {
                 CompanyName    = "Test Corp"
                 Timestamp      = "2026-03-21 12:00:00"
             }
-            
+
             $json = $jsonStatus | ConvertTo-Json
             $parsed = $json | ConvertFrom-Json
-            
+
             $parsed.UsbStorage | Should -Be "blocked"
             $parsed.WriteProtect | Should -Be "active"
             $parsed.CompanyName | Should -Be "Test Corp"
         }
     }
-}
-
-# Test helper functions
-function Get-Status_Test {
-    param(
-        [string]$RegPath,
-        [switch]$CheckWriteProtect,
-        [switch]$CheckAutoPlay,
-        [switch]$CheckThunderbolt
-    )
-    
-    $status = @{
-        UsbStorage     = "unknown"
-        WriteProtect   = "unknown"
-        AutoPlayKilled = "unknown"
-        Thunderbolt    = "unknown"
-    }
-
-    if (Test-Path $RegPath) {
-        $v = (Get-ItemProperty $RegPath -Name "Start" -EA SilentlyContinue).Start
-        if ($v -eq 4) { $status.UsbStorage = "blocked" }
-        elseif ($v -eq 3) { $status.UsbStorage = "allowed" }
-    }
-
-    if ($CheckWriteProtect) {
-        if (Test-Path $RegPath) {
-            $v = (Get-ItemProperty $RegPath -Name "WriteProtect" -EA SilentlyContinue).WriteProtect
-            $status.WriteProtect = if ($v -eq 1) { "active" } else { "inactive" }
-        } else { $status.WriteProtect = "inactive" }
-    }
-
-    if ($CheckAutoPlay) {
-        if (Test-Path $RegPath) {
-            $v = (Get-ItemProperty $RegPath -Name "NoDriveTypeAutoRun" -EA SilentlyContinue).NoDriveTypeAutoRun
-            $status.AutoPlayKilled = if ($v -eq 0xFF) { "disabled" } else { "enabled" }
-        }
-    }
-
-    if ($CheckThunderbolt) {
-        if (Test-Path $RegPath) {
-            $v = (Get-ItemProperty $RegPath -Name "Start" -EA SilentlyContinue).Start
-            $status.Thunderbolt = if ($v -eq 4) { "blocked" } else { "allowed" }
-        } else { $status.Thunderbolt = "not_present" }
-    }
-
-    return $status
 }
