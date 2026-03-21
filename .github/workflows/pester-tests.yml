@@ -104,6 +104,7 @@ jobs:
     if: always()
     permissions:
       checks: write
+      contents: read
       pull-requests: write
     steps:
       - name: Download Test Results

@@ -91,6 +91,7 @@ $WATCHER_TASK_NAME = "USBGuard_VolumeWatcher"
 $USBGUARD_DIR      = "$env:ProgramData\USBGuard"
 $WATCHER_SCRIPT    = "$USBGUARD_DIR\VolumeWatcher.ps1"
 $NOTIFY_SCRIPT     = "$USBGUARD_DIR\Notify.ps1"
+$AUDIT_LOG         = "$USBGUARD_DIR\audit.log"
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 function Write-Log {
@@ -99,6 +100,28 @@ function Write-Log {
     $line = "[$ts][$Level] $Message"
     Write-Host $line
     if ($OutputFile) { Add-Content -Path $OutputFile -Value $line -Encoding UTF8 }
+}
+
+# ── Audit & Event Log ──────────────────────────────────────────────────────────
+function Write-AuditEntry {
+    param([string]$Action, [string]$Detail = "")
+    $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $line = "[$ts] ACTION=$Action USER=$user" + $(if ($Detail) { " $Detail" } else { "" })
+    try {
+        if (-not (Test-Path $USBGUARD_DIR)) { New-Item -Path $USBGUARD_DIR -ItemType Directory -Force | Out-Null }
+        Add-Content -Path $AUDIT_LOG -Value $line -Encoding UTF8
+    } catch {}
+}
+
+function Write-EventLogEntry {
+    param([string]$Message, [int]$EventId = 1000, [string]$EntryType = "Information")
+    try {
+        if (-not [System.Diagnostics.EventLog]::SourceExists("USBGuard")) {
+            [System.Diagnostics.EventLog]::CreateEventSource("USBGuard", "Application")
+        }
+        Write-EventLog -LogName Application -Source "USBGuard" -EventId $EventId -EntryType $EntryType -Message $Message
+    } catch {}
 }
 
 # ── Registry helpers ───────────────────────────────────────────────────────────
@@ -368,8 +391,16 @@ function Get-NotifyConfig {
 
 function Save-NotifyConfig { param([string]$Company,[string]$Message)
     Ensure-RegPath $REG_USBGUARD_CFG
-    if ($Company) { Set-ItemProperty $REG_USBGUARD_CFG -Name "CompanyName"   -Value $Company -Type String }
-    if ($Message) { Set-ItemProperty $REG_USBGUARD_CFG -Name "NotifyMessage" -Value $Message -Type String }
+    if ($Company) {
+        $Company = $Company.Trim() -replace '[\x00-\x1F\x7F]',''
+        if ($Company.Length -gt 100) { $Company = $Company.Substring(0, 100) }
+        Set-ItemProperty $REG_USBGUARD_CFG -Name "CompanyName"   -Value $Company -Type String
+    }
+    if ($Message) {
+        $Message = $Message.Trim() -replace '[\x00-\x1F\x7F]',''
+        if ($Message.Length -gt 500) { $Message = $Message.Substring(0, 500) }
+        Set-ItemProperty $REG_USBGUARD_CFG -Name "NotifyMessage" -Value $Message -Type String
+    }
     Write-Log "Notification config saved" "SUCCESS"
 }
 
@@ -629,6 +660,8 @@ switch ($Action) {
         Write-Log "=== ALL LAYERS ACTIVE ===" "SUCCESS"
         Write-Log "Blocked: USB drives, Thunderbolt, MTP (Android), PTP (iPhone/cameras), Printers" "INFO"
         Write-Log "Preserved: Keyboards, mice, USB audio, charging" "INFO"
+        Write-AuditEntry -Action "block" -Detail "All 7 layers applied"
+        Write-EventLogEntry -Message "USBGuard: Full block applied — all 7 layers active." -EventId 1001
     }
 
     "unblock" {
@@ -639,28 +672,46 @@ switch ($Action) {
         Unblock-UsbPrinters
         Unblock-WpdMtp
         Write-Log "=== USB ACCESS FULLY RESTORED ===" "SUCCESS"
+        Write-AuditEntry -Action "unblock" -Detail "All layers removed"
+        Write-EventLogEntry -Message "USBGuard: Full unblock applied — USB access restored." -EventId 1002
     }
 
     "block-storage" {
         Block-StorageRegistry; Disable-AutoPlay; Install-VolumeWatcher
         Write-Log "USB Storage blocked" "SUCCESS"
+        Write-AuditEntry -Action "block-storage"
+        Write-EventLogEntry -Message "USBGuard: USB mass storage blocked (L1-L4, L6)." -EventId 1003
     }
     "unblock-storage" {
         Unblock-StorageRegistry; Enable-AutoPlay; Remove-VolumeWatcher
         Write-Log "USB Storage allowed" "SUCCESS"
+        Write-AuditEntry -Action "unblock-storage"
+        Write-EventLogEntry -Message "USBGuard: USB mass storage unblocked." -EventId 1004
     }
 
     "block-phones" {
         Block-WpdMtp
         Write-Log "MTP/PTP (phones/cameras) blocked" "SUCCESS"
+        Write-AuditEntry -Action "block-phones"
+        Write-EventLogEntry -Message "USBGuard: MTP/PTP stack blocked (Android, iPhone, cameras)." -EventId 1005
     }
     "unblock-phones" {
         Unblock-WpdMtp
         Write-Log "MTP/PTP (phones/cameras) allowed" "SUCCESS"
+        Write-AuditEntry -Action "unblock-phones"
+        Write-EventLogEntry -Message "USBGuard: MTP/PTP stack unblocked." -EventId 1006
     }
 
-    "block-printers"   { Block-UsbPrinters   }
-    "unblock-printers" { Unblock-UsbPrinters  }
+    "block-printers" {
+        Block-UsbPrinters
+        Write-AuditEntry -Action "block-printers"
+        Write-EventLogEntry -Message "USBGuard: USB printers blocked." -EventId 1007
+    }
+    "unblock-printers" {
+        Unblock-UsbPrinters
+        Write-AuditEntry -Action "unblock-printers"
+        Write-EventLogEntry -Message "USBGuard: USB printers unblocked." -EventId 1008
+    }
     "install-watcher"  { Install-VolumeWatcher }
     "remove-watcher"   { Remove-VolumeWatcher  }
 

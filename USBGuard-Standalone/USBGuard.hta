@@ -218,6 +218,19 @@
 
   .status-card.unknown { border-color: rgba(255,170,0,0.3); }
 
+  .status-card.partial {
+    border-color: rgba(255,170,0,0.35);
+    background: rgba(255,170,0,0.04);
+  }
+  .status-card.partial::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--warn);
+    box-shadow: 0 0 20px rgba(255,170,0,0.3);
+  }
+  .status-card.partial .sc-value { color: var(--warn); }
+
   .sc-label {
     font-size: 10px;
     letter-spacing: 2px;
@@ -968,6 +981,7 @@ function updateCard(cardId, valId, state, customLabels) {
     'blocked':     'BLOCKED',
     'allowed':     'ALLOWED',
     'unknown':     'UNKNOWN',
+    'partial':     'PARTIAL',
     'not_present': 'N/A'
   };
   var labels = customLabels || {};

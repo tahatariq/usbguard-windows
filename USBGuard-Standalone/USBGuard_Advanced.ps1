@@ -77,10 +77,15 @@ function Get-UsbDevices {
 function Export-Policy {
     param([string]$File)
     
-    $policy = @{
+    $policy = [ordered]@{
+        SchemaVersion    = 1
         ExportDate       = (Get-Date -Format "o")
         UsbStorageStart  = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR" -Name "Start" -ErrorAction SilentlyContinue).Start
         ThunderboltStart = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt" -Name "Start" -ErrorAction SilentlyContinue).Start
+        WriteProtect     = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies" -Name "WriteProtect" -ErrorAction SilentlyContinue).WriteProtect
+        WpdDriverStart   = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver" -Name "Start" -ErrorAction SilentlyContinue).Start
+        WUDFRdStart      = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\WUDFRd" -Name "Start" -ErrorAction SilentlyContinue).Start
+        WpdUpFltrStart   = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\WpdUpFltr" -Name "Start" -ErrorAction SilentlyContinue).Start
         PrinterDenyList  = @()
     }
     

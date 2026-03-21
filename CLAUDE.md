@@ -121,6 +121,9 @@ HKLM\SOFTWARE\USBGuard                                        Config + SavedStar
 - **`Add-GuidToDenyList` / `Remove-GuidFromDenyList`** handle the numbered-property pattern Windows uses for device class deny lists.
 - **VolumeWatcher** is a SYSTEM scheduled task running an infinite loop with WMI event subscription. It auto-ejects volumes and dispatches toast via a temporary per-user scheduled task.
 - **Logging**: `Write-Log` prefixes `[YYYY-MM-DD HH:mm:ss][LEVEL]` and optionally appends to `$OutputFile` (used by HTA to capture PS output).
+- **Audit Log**: `Write-AuditEntry` appends a line to `%ProgramData%\USBGuard\audit.log` on every block/unblock action. Format: `[timestamp] ACTION=<action> USER=<domain\user>`.
+- **Windows Event Log**: `Write-EventLogEntry` writes to `Application` log, source `USBGuard`. Event IDs 1001–1008 map to each block/unblock action. Source is auto-created on first write.
+- **Input Validation**: `Save-NotifyConfig` strips control characters and enforces `CompanyName ≤ 100 chars`, `NotifyMessage ≤ 500 chars` before writing to registry.
 
 ### Action Map
 ```
