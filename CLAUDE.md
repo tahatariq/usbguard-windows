@@ -43,13 +43,13 @@ usb-block/
 │   ├── app/
 │   │   ├── main.py            # FastAPI app, routes, lifespan
 │   │   ├── bigfix.py          # BigFix REST API client (action deploy, status query, scheduling)
-│   │   ├── date_parser.py     # Flexible date parsing (13 formats, past-date correction)
+│   │   ├── date_parser.py     # Date parsing — 5 explicit formats only (ISO 8601 + month-name variants), past-date correction
 │   │   ├── models.py          # Pydantic v2 request/response models
 │   │   ├── auth.py            # API key middleware (X-API-Key header)
 │   │   └── config.py          # Settings loaded from appsettings.json
 │   ├── tests/
 │   │   ├── test_api.py        # 17 API integration tests (TestClient + mocked BigFix)
-│   │   ├── test_date_parser.py # 18 date parsing tests
+│   │   ├── test_date_parser.py # 19 date parsing tests (5 supported formats + rejection of unsupported/ambiguous)
 │   │   ├── test_models.py     # 12 Pydantic validation tests
 │   │   └── test_bigfix.py     # 14 scheduling offset + encoding tests
 │   ├── appsettings.example.json   # Template — copy to appsettings.json and fill in secrets
