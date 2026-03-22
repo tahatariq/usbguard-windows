@@ -13,10 +13,18 @@
     <Company>USBGuard</Company>
     <Product>USBGuard</Product>
     <Description>Enterprise USB device management for Windows</Description>
-    <!-- Single-file self-contained publish: dotnet publish -c Release -r win-x64 -->
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
+    <!-- Suppress MSB3277: WebView2 NuGet pulls in its WPF dll transitively which conflicts
+         with the .NET 8 WindowsBase; WinForms picks the correct version automatically -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <!-- Publish-only settings — NOT applied during dotnet build / dotnet test.
+       RuntimeIdentifier at project level forces a RID-specific output path and breaks
+       ProjectReference from test projects that have no RID set. -->
+  <PropertyGroup Condition="'$(PublishProtocol)' != '' or '$(Publish)' == 'true'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>

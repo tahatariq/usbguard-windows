@@ -13,7 +13,7 @@
 
 .NOTES
     Output goes to:
-      Debug:   bin\Debug\net8.0-windows\win-x64\USBGuard.exe
+      Debug:   bin\Debug\net8.0-windows\USBGuard.exe
       Release: bin\Release\net8.0-windows\win-x64\publish\USBGuard.exe
 
     After a Release build, copy the publish\ folder contents alongside
@@ -54,6 +54,7 @@ try {
         dotnet build USBGuard.csproj -c Debug
 
         $exe = "$ProjectDir\bin\Debug\net8.0-windows\USBGuard.exe"
+        # Note: debug builds have no RID suffix (win-x64 only applies during publish)
     }
 
     if (Test-Path $exe) {
