@@ -111,6 +111,42 @@ Test-Bypass "Start-Service ShellHWDetection (re-enable AutoPlay service)" `
     { Start-Service -Name "ShellHWDetection" -EA Stop } `
     { Stop-Service -Name "ShellHWDetection" -Force -EA SilentlyContinue }
 
+# ── Vector 8: Re-enable SD card reader (L8) ─────────────────────────────────
+$sdPath = "HKLM:\SYSTEM\CurrentControlSet\Services\sdbus"
+if (Test-Path $sdPath) {
+    Write-Host "`n[L8] SD card reader re-enable"
+    $origSd = (Get-ItemProperty $sdPath -Name Start -EA SilentlyContinue).Start
+    Test-Bypass "Set sdbus Start=3 (re-enable SD card reader)" `
+        { Set-ItemProperty $sdPath -Name Start -Value 3 -Type DWord -Force -EA Stop } `
+        { if ($null -ne $origSd) { Set-ItemProperty $sdPath -Name Start -Value $origSd -Type DWord -Force -EA SilentlyContinue } }
+} else {
+    Write-Host "`n[L8] SD card reader - SKIPPED (sdbus driver not present)" -ForegroundColor DarkGray
+}
+
+# ── Vector 9: Re-enable Bluetooth file transfer (L9) ────────────────────────
+$btPath = "HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX"
+if (Test-Path $btPath) {
+    Write-Host "`n[L9] Bluetooth file transfer re-enable"
+    $origBt = (Get-ItemProperty $btPath -Name Start -EA SilentlyContinue).Start
+    Test-Bypass "Set BthOBEX Start=3 (re-enable Bluetooth OBEX)" `
+        { Set-ItemProperty $btPath -Name Start -Value 3 -Type DWord -Force -EA Stop } `
+        { if ($null -ne $origBt) { Set-ItemProperty $btPath -Name Start -Value $origBt -Type DWord -Force -EA SilentlyContinue } }
+} else {
+    Write-Host "`n[L9] Bluetooth file transfer - SKIPPED (BthOBEX driver not present)" -ForegroundColor DarkGray
+}
+
+# ── Vector 10: Re-enable FireWire (L10) ──────────────────────────────────────
+$fwPath = "HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci"
+if (Test-Path $fwPath) {
+    Write-Host "`n[L10] FireWire re-enable"
+    $origFw = (Get-ItemProperty $fwPath -Name Start -EA SilentlyContinue).Start
+    Test-Bypass "Set 1394ohci Start=3 (re-enable FireWire)" `
+        { Set-ItemProperty $fwPath -Name Start -Value 3 -Type DWord -Force -EA Stop } `
+        { if ($null -ne $origFw) { Set-ItemProperty $fwPath -Name Start -Value $origFw -Type DWord -Force -EA SilentlyContinue } }
+} else {
+    Write-Host "`n[L10] FireWire - SKIPPED (1394ohci driver not present)" -ForegroundColor DarkGray
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host "`n$('=' * 55)"
 Write-Host "Results:"

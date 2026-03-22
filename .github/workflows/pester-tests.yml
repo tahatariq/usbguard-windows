@@ -30,7 +30,13 @@ jobs:
           $errors = 0
           $files = @(
             "USBGuard-Standalone/USBGuard.ps1",
-            "USBGuard-Standalone/USBGuard_Advanced.ps1"
+            "USBGuard-Standalone/USBGuard_Advanced.ps1",
+            "USBGuard-Standalone/USBGuard_Snapshot.ps1",
+            "USBGuard-Standalone/USBGuard_ComplianceReport.ps1",
+            "USBGuard-Standalone/Send-ExceptionNotification.ps1",
+            "USBGuard-Standalone/Detect-USBGuard.ps1",
+            "USBGuard-Standalone/Install-USBGuard.ps1",
+            "USBGuard-Standalone/Uninstall-USBGuard.ps1"
           )
 
           foreach ($file in $files) {
@@ -152,19 +158,33 @@ jobs:
         run: |
           $files = @(
             "USBGuard-Standalone/USBGuard.ps1",
-            "USBGuard-Standalone/USBGuard_Advanced.ps1"
+            "USBGuard-Standalone/USBGuard_Advanced.ps1",
+            "USBGuard-Standalone/USBGuard_Snapshot.ps1",
+            "USBGuard-Standalone/USBGuard_ComplianceReport.ps1",
+            "USBGuard-Standalone/Send-ExceptionNotification.ps1",
+            "USBGuard-Standalone/Detect-USBGuard.ps1",
+            "USBGuard-Standalone/Install-USBGuard.ps1",
+            "USBGuard-Standalone/Uninstall-USBGuard.ps1"
           )
 
+          $failCount = 0
           foreach ($file in $files) {
             Write-Host "`n=== Analyzing $file ==="
-            $results = Invoke-ScriptAnalyzer -Path $file -Severity Warning
+            # Exclude PSUseApprovedVerbs — pre-existing naming (Ensure-RegPath, Eject-AllRemovableVolumes)
+            $results = Invoke-ScriptAnalyzer -Path $file -Severity Warning -ExcludeRule PSUseApprovedVerbs
 
             if ($results) {
               Write-Host "Issues found:"
               $results | Format-Table -AutoSize
+              $failCount += $results.Count
             } else {
               Write-Host "[OK] No issues found"
             }
+          }
+
+          if ($failCount -gt 0) {
+            Write-Error "PSScriptAnalyzer found $failCount issue(s)"
+            exit 1
           }
 
   registry-validation:
@@ -182,11 +202,15 @@ jobs:
 
           # Check for required registry paths
           $checks = @{
-            'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' = 'USB Storage driver'
-            'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt' = 'Thunderbolt'
-            'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' = 'Storage policies'
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions' = 'Device restrictions'
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' = 'AutoPlay policy'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR' = 'L1 USB Storage driver'
+            'HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies' = 'L2 Storage policies'
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions' = 'L3 Device restrictions'
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' = 'L4 AutoPlay policy'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\thunderbolt' = 'L6 Thunderbolt'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver' = 'L7 WPD/MTP/PTP'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\sdbus' = 'L8 SD Card reader'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\BthOBEX' = 'L9 Bluetooth OBEX'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\1394ohci' = 'L10 FireWire'
           }
 
           $issues = 0
@@ -226,6 +250,10 @@ jobs:
             "USBGuard-Standalone/README.md"
             "CODE_VALIDATION.md"
             "CLAUDE.md"
+            "docs/known-bypass-vectors.md"
+            "docs/siem-integration.md"
+            "docs/intune-oma-uri.md"
+            "docs/multi-tenant-ou-policy.md"
           )
 
           missing=0

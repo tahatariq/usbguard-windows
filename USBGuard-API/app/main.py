@@ -81,6 +81,15 @@ async def lifespan(app: FastAPI):
 # Application factory
 # ---------------------------------------------------------------------------
 
+def _docs_url() -> str | None:
+    """Disable Swagger UI in production (set USBGUARD_DISABLE_DOCS=1)."""
+    return None if os.environ.get("USBGUARD_DISABLE_DOCS") == "1" else "/docs"
+
+
+def _redoc_url() -> str | None:
+    return None if os.environ.get("USBGUARD_DISABLE_DOCS") == "1" else "/redoc"
+
+
 app = FastAPI(
     title="USBGuard API",
     description=(
@@ -89,6 +98,8 @@ app = FastAPI(
     ),
     version="2.0.0",
     lifespan=lifespan,
+    docs_url=_docs_url(),
+    redoc_url=_redoc_url(),
 )
 
 app.add_middleware(ApiKeyMiddleware)

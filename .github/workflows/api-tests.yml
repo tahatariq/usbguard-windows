@@ -40,19 +40,26 @@ jobs:
           cache-dependency-path: USBGuard-API/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest pytest-cov
+        run: pip install -r requirements.txt pytest pytest-cov pytest-asyncio
 
       # appsettings.json is excluded from git (contains secrets).
       # The tests mock BigFix entirely, so only the file needs to exist.
       - name: Create stub appsettings.json for tests
         run: |
-          echo '{
+          cat > appsettings.json << 'SETTINGS'
+          {
             "bigfix_server": "test.local",
             "bigfix_port": 52311,
             "bigfix_username": "admin",
             "bigfix_password": "test",
-            "api_keys": ["ci-test-key"]
-          }' > appsettings.json
+            "bigfix_ca_cert": "",
+            "api_keys": [
+              "ci-test-key",
+              {"key": "ci-readonly-key", "role": "readonly"},
+              {"key": "ci-approver-key", "role": "approver"}
+            ]
+          }
+          SETTINGS
 
       - name: Run tests
         run: python3 -m pytest tests/ -v --tb=short --junitxml=test-results.xml

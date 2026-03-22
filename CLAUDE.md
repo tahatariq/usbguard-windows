@@ -8,55 +8,68 @@ USBGuard is an enterprise USB device management and lockdown solution for Window
 
 ## Architecture Overview
 
-Two deployment variants share the same 7-layer protection model:
+Two deployment variants share the same 10-layer protection model:
 
 ```
 usbguard-windows/
 ├── USBGuard-Standalone/       # IT-admin GUI + PS backend, no fleet mgmt
-│   ├── USBGuard.ps1           # Core PS5.1 backend — all 7 layers + watcher
+│   ├── USBGuard.ps1           # Core PS5.1 backend — all 10 layers + watcher
 │   ├── USBGuard_Advanced.ps1       # List devices, export policy to JSON
 │   ├── USBGuard_Snapshot.ps1       # Pre-block device snapshot + allowlist pre-population
-│   ├── USBGuard_ComplianceReport.ps1  # 7-layer HTML compliance report
+│   ├── USBGuard_ComplianceReport.ps1  # 10-layer HTML compliance report
 │   ├── Send-ExceptionNotification.ps1 # Teams/Slack webhook on exception grant/expiry
 │   ├── USBGuard.hta           # HTML Application GUI (IE/MSHTML engine)
-│   └── Launch_USBGuard.bat    # UAC-elevating launcher
+│   ├── Launch_USBGuard.bat    # UAC-elevating launcher
+│   ├── Detect-USBGuard.ps1    # Intune detection script
+│   ├── Install-USBGuard.ps1   # Intune install script
+│   ├── Uninstall-USBGuard.ps1 # Intune uninstall script
+│   ├── USBGuard.admx          # GPO ADMX template
+│   ├── en-US/USBGuard.adml    # GPO ADML localization
+│   └── installer/Product.wxs  # WiX MSI scaffold
 │
 ├── USBGuard-BigFix/           # Enterprise fleet deployment via HCL BigFix
-│   ├── Fixlet1_ApplyPolicy.bes    # All 7 layers — idempotent, runs as SYSTEM
+│   ├── Fixlet1_ApplyPolicy.bes    # All 10 layers — idempotent, runs as SYSTEM
 │   ├── Fixlet2_DeployWatcher.bes  # VolumeWatcher scheduled task (SYSTEM)
 │   ├── Fixlet3_LockACLs.bes       # DENY ACEs on all protected registry keys
-│   ├── Fixlet4_Unblock.bes        # Exception fixlet — strips ACEs then clears policy
-│   └── Fixlet5_ComplianceDetection.bes  # Relevance-only audit + Analysis Properties
+│   ├── Fixlet4_Unblock.bes        # Exception fixlet — strips ACEs then clears all 10 layers + configurable expiry via ExceptionDays
+│   └── Fixlet5_ComplianceDetection.bes  # Relevance-only audit + Analysis Properties (detects L8-L10 compliance)
 │
 ├── tests/
 │   ├── unit/Registry.Tests.ps1          # Pester unit tests — registry helpers
 │   ├── unit/StatusDetection.Tests.ps1   # Pester unit tests — status parsing
 │   ├── unit/WpdMtp.Tests.ps1            # Pester unit tests — Layer 7 WPD/MTP/PTP
 │   ├── unit/AuditNotify.Tests.ps1       # Pester unit tests — audit log + input validation
-│   ├── unit/ComplianceReport.Tests.ps1  # Pester unit tests — layer status map + HTML report
+│   ├── unit/ComplianceReport.Tests.ps1  # Pester unit tests — layer status map + HTML report (L1-L10)
 │   ├── unit/NotifyWebhook.Tests.ps1     # Pester unit tests — Teams + Slack payload builders
 │   ├── simulation/TamperDetection.Simulation.ps1  # End-to-end tamper detection proof
 │   ├── simulation/BypassAttempt.Simulation.ps1    # Red-team bypass vector checklist
 │   └── integration/BlockUnblock.Tests.ps1  # Pester integration tests
 │
-├── USBGuard-API/              # Python/FastAPI REST API — BigFix exception management over HTTP
+├── USBGuard-API/              # Python/FastAPI REST API v2.0.0 — BigFix exception management over HTTP
 │   ├── app/
-│   │   ├── main.py            # FastAPI app, routes, lifespan
-│   │   ├── bigfix.py          # BigFix REST API client (action deploy, status query, scheduling)
+│   │   ├── main.py            # FastAPI app, routes, lifespan, RBAC, rate limiting
+│   │   ├── bigfix.py          # Async BigFixClient (httpx.AsyncClient), action deploy, status query, scheduling
 │   │   ├── date_parser.py     # Date parsing — 5 explicit formats only (ISO 8601 + month-name variants), past-date correction
-│   │   ├── models.py          # Pydantic v2 request/response models
-│   │   ├── auth.py            # API key middleware (X-API-Key header)
-│   │   └── config.py          # Settings loaded from appsettings.json
+│   │   ├── models.py          # Pydantic v2 request/response models + input validation regex (injection prevention)
+│   │   ├── auth.py            # API key middleware (X-API-Key header) + RBAC (admin, approver, readonly) + timing-safe comparison (hmac.compare_digest)
+│   │   └── config.py          # Settings loaded from appsettings.json (incl. bigfix_ca_cert for configurable SSL)
 │   ├── tests/
-│   │   ├── test_api.py        # 16 API integration tests (TestClient + mocked BigFix)
+│   │   ├── test_api.py        # ~40 API integration tests (RBAC, bulk, audit, fleet, inventory, rate limiting)
 │   │   ├── test_date_parser.py # 19 date parsing tests (5 supported formats + rejection of unsupported/ambiguous)
-│   │   ├── test_models.py     # 12 Pydantic validation tests
+│   │   ├── test_models.py     # ~40 Pydantic validation tests (injection prevention)
 │   │   └── test_bigfix.py     # 14 scheduling offset + encoding tests
 │   ├── appsettings.example.json   # Template — copy to appsettings.json and fill in secrets
 │   ├── generate_api_key.py    # Generates a secure random API key, prints rotation instructions
 │   ├── requirements.txt
 │   ├── web.config             # IIS HttpPlatformHandler config (proxies to uvicorn)
 │   └── README.md              # Deployment guide, API reference, scheduling/expiry explanation
+│
+├── docs/
+│   ├── known-bypass-vectors.md    # Known bypass vectors and mitigations
+│   ├── siem-integration.md        # SIEM integration guide
+│   ├── intune-oma-uri.md          # Intune OMA-URI configuration reference
+│   ├── multi-tenant-ou-policy.md  # Multi-tenant OU-scoped policy guide (GPO, BigFix, Intune)
+│   └── webview2-migration-roadmap.md  # HTA to WebView2 migration plan
 │
 ├── .github/workflows/pester-tests.yml  # CI: matrix (Win2022/Win2025), syntax, Pester, PSScriptAnalyzer
 ├── .github/workflows/api-tests.yml     # CI: Python 3.12, pytest, runs on path changes to USBGuard-API/
@@ -67,7 +80,7 @@ usbguard-windows/
 
 ---
 
-## The 7 Protection Layers
+## The 10 Protection Layers
 
 | Layer | Registry / Service | Blocks |
 |-------|-------------------|--------|
@@ -78,6 +91,9 @@ usbguard-windows/
 | L5 | WMI Volume Watcher (SYSTEM scheduled task) | Auto-ejects within ~1s of mount + user toast |
 | L6 | `thunderbolt\Start=4` | Thunderbolt external drives |
 | L7 | WPD stack disabled + MTP/PTP/Imaging GUIDs denied | Android (MTP), iPhone/iTunes (PTP), cameras, media players |
+| L8 | `sdbus\Start=4` | SD card readers (internal and external) |
+| L9 | `BthOBEX\Start=4` + `RFCOMM\Start=4` + OBEX GUID denied | Bluetooth file transfer (OBEX/RFCOMM) |
+| L10 | `1394ohci\Start=4` | FireWire / IEEE 1394 external storage |
 
 **Never blocked:** Keyboards, mice, USB audio, USB hubs, USB charging (VBUS is electrical).
 
@@ -86,8 +102,9 @@ usbguard-windows/
 ## Key Design Decisions
 
 ### Policy = Block by Default, Exception by Request
-- The BigFix Baseline enforces all 7 layers + ACL lock across all endpoints
+- The BigFix Baseline enforces all 10 layers + ACL lock across all endpoints
 - Exception: use Fixlet 4 targeted at specific computer(s) — BigFix audit trail records who/when
+- Fixlet 4 supports configurable exception expiry via `ExceptionDays` registry value
 - After the exception window, re-apply Fixlets 1+2+3 to restore policy
 
 ### BigFix vs Standalone
@@ -122,6 +139,10 @@ HKLM\SYSTEM\CurrentControlSet\Services\WpdFilesystemDriver    Start: 4=blocked
 HKLM\SYSTEM\CurrentControlSet\Services\WUDFRd                 Start: 4=blocked
 HKLM\SYSTEM\CurrentControlSet\Services\WpdUpFltr              Start: 4=blocked
 HKLM\SYSTEM\CurrentControlSet\Services\thunderbolt            Start: 4=blocked
+HKLM\SYSTEM\CurrentControlSet\Services\sdbus                  Start: 4=blocked (L8)
+HKLM\SYSTEM\CurrentControlSet\Services\BthOBEX                Start: 4=blocked (L9)
+HKLM\SYSTEM\CurrentControlSet\Services\RFCOMM                 Start: 4=blocked (L9)
+HKLM\SYSTEM\CurrentControlSet\Services\1394ohci               Start: 4=blocked (L10)
 HKLM\SOFTWARE\USBGuard                                        Config + SavedStart\*
 ```
 
@@ -134,6 +155,7 @@ HKLM\SOFTWARE\USBGuard                                        Config + SavedStar
 {EEC5AD98-8080-425F-922A-DABF3DE3F69A}  WPD (MTP/PTP — Android, media players)
 {70AE35D8-BF10-11D0-AC45-0000C0B0BFCB}  WPD Print subclass
 {6BDD1FC6-810F-11D0-BEC7-08002BE2092F}  Still image / PTP cameras / iPhone
+{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}  Bluetooth OBEX (L9)
 ```
 
 ---
@@ -152,13 +174,15 @@ HKLM\SOFTWARE\USBGuard                                        Config + SavedStar
 - **Tamper Detection**: `Install-TamperDetection` installs `USBGuard_TamperDetection` scheduled task (every 5 min, SYSTEM). Checks L1 USBSTOR, L2 WriteProtect, L7 WpdFilesystemDriver; re-applies any reverted values and logs to `tamper.log`, `audit.log`, and EventLog (EventId 1009, Warning).
 - **Logging**: `Write-Log` prefixes `[YYYY-MM-DD HH:mm:ss][LEVEL]` and optionally appends to `$OutputFile` (used by HTA to capture PS output).
 - **Audit Log**: `Write-AuditEntry` appends a line to `%ProgramData%\USBGuard\audit.log` on every block/unblock action. Format: `[timestamp] ACTION=<action> USER=<domain\user>`.
-- **Windows Event Log**: `Write-EventLogEntry` writes to `Application` log, source `USBGuard`. Event IDs 1001–1009 map to each block/unblock/tamper action. Source is auto-created on first write.
+- **Windows Event Log**: `Write-EventLogEntry` writes to `Application` log, source `USBGuard`. Event IDs 1001–1015 map to each block/unblock/tamper action (1010–1015 cover L8-L10 block/unblock). Source is auto-created on first write.
 - **Input Validation**: `Save-NotifyConfig` strips control characters and enforces `CompanyName ≤ 100 chars`, `NotifyMessage ≤ 500 chars` before writing to registry.
+- **Allowlist specificity warning**: Warns when a Device ID lacks `VEN_`/`PROD_` identifiers, as overly broad allowlist entries reduce security.
+- **Injection escaping**: `Write-NotifyScript` escapes PowerShell injection characters. VolumeWatcher validates `activeUser` with regex.
 
 ### Action Map
 ```
 status                     → Get-Status → JSON (includes AllowlistCount, TamperDetection)
-block                      → L1-L7 all layers
+block                      → L1-L10 all layers
 unblock                    → reverse all layers
 block-storage              → L1+L2+L3(storage)+L4+L5+L6
 unblock-storage            → reverse above
@@ -166,6 +190,12 @@ block-phones               → L7 (WPD/MTP/PTP)
 unblock-phones             → reverse L7
 block-printers             → L3 (printer GUID) + DenyInstall
 unblock-printers           → reverse above
+block-sdcard               → L8 (sdbus)
+unblock-sdcard             → reverse L8
+block-bluetooth            → L9 (BthOBEX/RFCOMM + OBEX GUID)
+unblock-bluetooth          → reverse L9
+block-firewire             → L10 (1394ohci)
+unblock-firewire           → reverse L10
 install-watcher            → L5 scheduled task only
 remove-watcher             → remove L5 task
 set-notify-config          → save company name + message to HKLM\SOFTWARE\USBGuard
@@ -174,6 +204,29 @@ remove-allowlist -DeviceId → remove from allowlist
 list-allowlist             → output JSON array of allowlist entries
 install-tamper-detection   → install USBGuard_TamperDetection task (5-min checks)
 remove-tamper-detection    → remove tamper detection task
+```
+
+---
+
+## REST API v2.0.0 (USBGuard-API/)
+
+- **Framework**: FastAPI with uvicorn, deployed behind IIS HttpPlatformHandler.
+- **Authentication**: API key via `X-API-Key` header, compared with `hmac.compare_digest` (timing-safe).
+- **RBAC**: Three roles — `admin` (full access), `approver` (can grant exceptions), `readonly` (read-only endpoints only).
+- **Rate Limiting**: In-memory per-key limits — 30 writes/min, 120 reads/min.
+- **BigFix Client**: Async `BigFixClient` using `httpx.AsyncClient`. Configurable SSL certificate via `bigfix_ca_cert` setting.
+- **Input Validation**: Regex patterns in `models.py` reject PowerShell, BES actionscript, and BigFix relevance injection attempts.
+- **Swagger Docs**: Available by default; disable in production with `USBGUARD_DISABLE_DOCS=1` env var.
+
+### API Endpoints
+```
+GET  /api/health                  → Health check
+POST /api/exceptions              → Grant exception (single machine)
+POST /api/exceptions/bulk         → Grant exceptions (multiple machines)
+GET  /api/exceptions/{pc_name}    → Query exception status
+GET  /api/audit                   → Audit log of all exception actions
+GET  /api/fleet/compliance        → Fleet-wide compliance summary
+GET  /api/inventory/{pc_name}     → Device inventory for a specific machine
 ```
 
 ---
@@ -225,7 +278,7 @@ Jobs: `syntax-check` → `pester-tests (matrix)` + `code-analysis` + `registry-v
 **`.github/workflows/api-tests.yml`** — Python/FastAPI tests
 Runs on `ubuntu-latest` when anything under `USBGuard-API/` changes. Creates a stub `appsettings.json` (secrets mocked in tests — no real BigFix needed). Publishes JUnit results via `dorny/test-reporter`.
 
-### Test Files (181 tests total — 122 PowerShell + 59 API)
+### Test Files (~235 tests total — ~122 PowerShell + ~113 API)
 
 **PowerShell (Pester):**
 | File | Tests | Coverage |
@@ -234,29 +287,30 @@ Runs on `ubuntu-latest` when anything under `USBGuard-API/` changes. Creates a s
 | `unit/StatusDetection.Tests.ps1` | 11 | Status parsing |
 | `unit/WpdMtp.Tests.ps1` | 16 | L7 WPD/MTP/PTP block/unblock |
 | `unit/AuditNotify.Tests.ps1` | 24 | Write-AuditEntry, Write-EventLogEntry, input validation |
-| `unit/ComplianceReport.Tests.ps1` | 25 | Layer status map, HTML report generation |
+| `unit/ComplianceReport.Tests.ps1` | 25 | Layer status map, HTML report generation (L1-L10) |
 | `unit/NotifyWebhook.Tests.ps1` | 21 | Teams + Slack payload builders |
 | `integration/BlockUnblock.Tests.ps1` | 10 | Idempotency, round-trips |
 
 **API (pytest):**
 | File | Tests | Coverage |
 |------|-------|----------|
-| `USBGuard-API/tests/test_api.py` | 16 | All three endpoints, auth rejection, BigFix error handling |
+| `USBGuard-API/tests/test_api.py` | ~40 | RBAC, bulk exceptions, audit, fleet compliance, inventory, rate limiting |
 | `USBGuard-API/tests/test_date_parser.py` | 19 | 5 supported formats + rejection of unsupported/ambiguous |
-| `USBGuard-API/tests/test_models.py` | 10 | Required fields, non-empty RITM, day range (1–365) |
+| `USBGuard-API/tests/test_models.py` | ~40 | Pydantic validation + injection prevention (PS/BES/relevance) |
 | `USBGuard-API/tests/test_bigfix.py` | 14 | Scheduling offset calculation, PowerShell base64 encoding |
 
 ### Simulation Scripts (manual, require admin)
 | Script | What it proves |
 |--------|---------------|
 | `simulation/TamperDetection.Simulation.ps1` | Reverts USBSTOR Start=3, invokes TamperDetect.ps1, asserts Start restored to 4 and log written |
-| `simulation/BypassAttempt.Simulation.ps1` | Attempts 7 bypass vectors (registry revert, service kill, etc.); reports BLOCKED vs SUCCEEDED; restores all changes |
+| `simulation/BypassAttempt.Simulation.ps1` | Attempts 10 bypass vectors (registry revert, service kill, etc.); reports BLOCKED vs SUCCEEDED; restores all changes |
 
 ### Remaining Coverage Gaps
 - `Install-VolumeWatcher` / `Remove-VolumeWatcher` (requires SYSTEM context / task scheduler)
 - `Install-TamperDetection` / `Remove-TamperDetection` (same reason)
 - HTA logic is not unit-tested (VBScript/JS — manual testing required)
 - L6 Thunderbolt block/unblock not integration-tested
+- L8/L9/L10 block/unblock not integration-tested
 
 ---
 
@@ -269,9 +323,10 @@ All three should run before the Baseline is activated. Fixlet 3 must follow Fixl
 
 **Exception workflow:**
 1. Target Fixlet 4 at specific computer(s) — never "all endpoints"
-2. BigFix strips DENY ACEs then clears all 7 layers
-3. After exception window, re-target with Fixlets 1+2+3
-4. BigFix audit trail records who granted the exception
+2. BigFix strips DENY ACEs then clears all 10 layers (including L8-L10)
+3. Exception duration configurable via `ExceptionDays` registry value
+4. After exception window, re-target with Fixlets 1+2+3
+5. BigFix audit trail records who granted the exception
 
 ---
 
@@ -283,6 +338,10 @@ All three should run before the Baseline is activated. Fixlet 3 must follow Fixl
 - **VolumeWatcher** runs as SYSTEM; toast dispatched via temporary per-user scheduled task to avoid SYSTEM→desktop UI injection issues
 - **No credentials** stored anywhere in scripts
 - BigFix fixlets use `action uses wow64 redirection false` to ensure 64-bit registry access
+- **PNP ID validation** in HTA prevents malicious device IDs from being passed to PowerShell
+- **API key comparison** uses `hmac.compare_digest` for timing-safe authentication
+- **Input validation regex** in `models.py` prevents PowerShell, BES actionscript, and BigFix relevance injection
+- **Swagger docs** can be disabled in production via `USBGUARD_DISABLE_DOCS=1` environment variable
 
 ---
 
