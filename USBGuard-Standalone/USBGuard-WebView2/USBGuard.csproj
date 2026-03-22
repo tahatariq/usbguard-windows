@@ -29,6 +29,15 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
+  <!-- Exclude the tests/ subfolder — MSBuild would otherwise auto-include
+       tests\*.cs into this project because tests/ is a child directory. -->
+  <ItemGroup>
+    <Compile Remove="tests\**" />
+    <None Remove="tests\**" />
+    <Content Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- WebView2 NuGet package — Evergreen runtime, auto-updated by Microsoft -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
