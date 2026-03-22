@@ -318,14 +318,10 @@ jobs:
         run: |
           cd USBGuard-Standalone/USBGuard-WebView2/tests
           npm install
-          # Jest outputs to stdout; convert to JUnit for publish step
-          npx jest --reporters=default --reporters=jest-junit `
-            --testResultsProcessor=jest-junit 2>&1 | Tee-Object -Variable jestOutput
-          $exitCode = $LASTEXITCODE
-          Write-Host $jestOutput
-          exit $exitCode
+          New-Item -ItemType Directory -Force -Path "..\..\..\test-results-webview2" | Out-Null
+          npx jest --reporters=default --reporters=jest-junit
         env:
-          JEST_JUNIT_OUTPUT_FILE: ../../../test-results-webview2/test-results-webview2-jest.xml
+          JEST_JUNIT_OUTPUT_FILE: ..\..\..\test-results-webview2\test-results-webview2-jest.xml
 
       - name: Upload WebView2 Test Results
         uses: actions/upload-artifact@v4
