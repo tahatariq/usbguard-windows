@@ -25,7 +25,7 @@ function isValidPnpId(s) {
  */
 function extractStatusJson(output) {
   if (!output) return null;
-  const m = output.match(/\{[\s\S]*\}/);
+  const m = output.match(/\{[\s\S]*?\}/);
   if (!m) return null;
   try {
     return JSON.parse(m[0]);
