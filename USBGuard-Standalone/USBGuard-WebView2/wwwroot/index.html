@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USBGuard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #0a0c10;
+    --panel:     #0f1318;
+    --border:    #1e2530;
+    --accent:    #00d4ff;
+    --danger:    #ff3e3e;
+    --safe:      #00ff99;
+    --warn:      #ffaa00;
+    --text:      #c8d6e5;
+    --dim:       #4a5568;
+    --glow-blue: 0 0 20px rgba(0,212,255,0.3);
+    --glow-red:  0 0 20px rgba(255,62,62,0.3);
+    --glow-grn:  0 0 20px rgba(0,255,153,0.3);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+  }
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .app { display:flex; flex-direction:column; height:100vh; }
+
+  .header {
+    background: linear-gradient(90deg,#0d1117 0%,#111820 50%,#0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: relative; overflow: hidden; flex-shrink: 0;
+  }
+  .header::before {
+    content: '';
+    position: absolute; bottom:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg,transparent,var(--accent),transparent);
+    opacity: 0.6;
+  }
+  .logo { display:flex; align-items:center; gap:12px; }
+  .logo-icon { width:36px; height:36px; }
+  .logo-icon svg { width:100%; height:100%; }
+  .logo-text { font-size:22px; font-weight:700; letter-spacing:4px; color:#fff; text-transform:uppercase; }
+  .logo-text span { color:var(--accent); text-shadow:var(--glow-blue); }
+  .logo-sub { font-size:10px; letter-spacing:3px; color:var(--dim); text-transform:uppercase; margin-top:2px; font-family:'Share Tech Mono',monospace; }
+  .header-right { display:flex; align-items:center; gap:16px; }
+  .admin-badge {
+    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
+    color:var(--safe); background:rgba(0,255,153,0.08); border:1px solid rgba(0,255,153,0.25);
+    padding:4px 10px; border-radius:2px; text-transform:uppercase;
+  }
+  .admin-badge.no-admin { color:var(--danger); background:rgba(255,62,62,0.08); border-color:rgba(255,62,62,0.25); }
+  .btn-close {
+    width:28px; height:28px; background:rgba(255,62,62,0.1); border:1px solid rgba(255,62,62,0.3);
+    color:var(--danger); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    font-size:16px; border-radius:2px; transition:all 0.2s; font-family:'Share Tech Mono',monospace;
+  }
+  .btn-close:hover { background:rgba(255,62,62,0.25); box-shadow:var(--glow-red); }
+
+  .content {
+    flex:1; display:flex; flex-direction:column; padding:16px 24px; gap:14px;
+    overflow-y:auto; min-height:0;
+  }
+  .content::-webkit-scrollbar { width:5px; }
+  .content::-webkit-scrollbar-track { background:transparent; }
+  .content::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+  .status-bar { display:flex; gap:8px; flex-wrap:nowrap; flex-shrink:0; }
+
+  .status-card {
+    flex:1; min-width:0; background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; padding:10px 12px; position:relative; overflow:hidden; transition:border-color 0.3s;
+  }
+  .status-card.blocked  { border-color:rgba(255,62,62,0.35);  background:rgba(255,62,62,0.04); }
+  .status-card.allowed  { border-color:rgba(0,255,153,0.25);  background:rgba(0,255,153,0.03); }
+  .status-card.unknown  { border-color:rgba(255,170,0,0.3); }
+  .status-card.partial  { border-color:rgba(255,170,0,0.35); background:rgba(255,170,0,0.04); }
+
+  .status-card.blocked::before, .status-card.allowed::before, .status-card.partial::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  }
+  .status-card.blocked::before { background:var(--danger); box-shadow:var(--glow-red); }
+  .status-card.allowed::before { background:var(--safe);   box-shadow:var(--glow-grn); }
+  .status-card.partial::before { background:var(--warn);   box-shadow:0 0 20px rgba(255,170,0,0.3); }
+
+  .sc-label { font-size:9px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; font-family:'Share Tech Mono',monospace; margin-bottom:4px; }
+  .sc-value { font-size:15px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+  .sc-icon  { position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:0.12; font-size:24px; }
+
+  .status-card.blocked .sc-value { color:var(--danger); }
+  .status-card.allowed .sc-value { color:var(--safe); }
+  .status-card.unknown .sc-value { color:var(--warn); }
+  .status-card.partial .sc-value { color:var(--warn); }
+
+  .control-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  .control-panel { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:16px; }
+
+  .cp-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .cp-icon { width:32px; height:32px; background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .cp-title { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#e2e8f0; }
+  .cp-desc  { font-size:11px; color:var(--dim); letter-spacing:1px; margin-top:2px; font-family:'Share Tech Mono',monospace; }
+
+  .cp-scope { margin-bottom:12px; }
+  .scope-tag { display:inline-block; font-size:9px; font-family:'Share Tech Mono',monospace; letter-spacing:1px; padding:2px 7px; border-radius:2px; margin:2px 3px 2px 0; background:rgba(0,212,255,0.06); border:1px solid rgba(0,212,255,0.15); color:rgba(0,212,255,0.8); }
+  .scope-tag.excluded { background:rgba(74,85,104,0.3); border-color:rgba(74,85,104,0.5); color:var(--dim); text-decoration:line-through; }
+
+  .cp-actions { display:flex; gap:8px; }
+  .btn {
+    flex:1; padding:9px 10px; border-radius:3px; font-family:'Rajdhani',sans-serif; font-size:12px;
+    font-weight:600; letter-spacing:2px; text-transform:uppercase; cursor:pointer; border:1px solid;
+    transition:all 0.2s; position:relative; overflow:hidden;
+  }
+  .btn::after { content:''; position:absolute; inset:0; background:white; opacity:0; transition:opacity 0.15s; }
+  .btn:active::after { opacity:0.08; }
+  .btn:disabled { opacity:0.35; cursor:not-allowed; box-shadow:none; }
+
+  .btn-block   { background:rgba(255,62,62,0.1);  border-color:rgba(255,62,62,0.4);  color:var(--danger); }
+  .btn-block:hover:not(:disabled)   { background:rgba(255,62,62,0.2);  box-shadow:var(--glow-red); border-color:var(--danger); }
+  .btn-unblock { background:rgba(0,255,153,0.07); border-color:rgba(0,255,153,0.3);  color:var(--safe); }
+  .btn-unblock:hover:not(:disabled) { background:rgba(0,255,153,0.15); box-shadow:var(--glow-grn); border-color:var(--safe); }
+
+  .master-panel {
+    background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:14px 20px;
+    display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden; flex-shrink:0;
+  }
+  .master-panel::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(0,212,255,0.4),transparent); }
+  .master-label  { display:flex; flex-direction:column; gap:3px; }
+  .master-title  { font-size:14px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#fff; }
+  .master-sub    { font-size:10px; color:var(--dim); letter-spacing:2px; font-family:'Share Tech Mono',monospace; }
+  .master-actions { display:flex; gap:10px; }
+  .btn-master-block {
+    padding:10px 22px; background:rgba(255,62,62,0.12); border:1px solid rgba(255,62,62,0.5);
+    color:var(--danger); font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:3px;
+    text-transform:uppercase; cursor:pointer; border-radius:3px; transition:all 0.2s;
+  }
+  .btn-master-block:hover { background:rgba(255,62,62,0.25); box-shadow:0 0 25px rgba(255,62,62,0.4); }
+  .btn-master-unblock {
+    padding:10px 22px; background:rgba(0,255,153,0.08); border:1px solid rgba(0,255,153,0.4);
+    color:var(--safe); font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:3px;
+    text-transform:uppercase; cursor:pointer; border-radius:3px; transition:all 0.2s;
+  }
+  .btn-master-unblock:hover { background:rgba(0,255,153,0.18); box-shadow:0 0 25px rgba(0,255,153,0.35); }
+
+  .tamper-row { display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+  .tamper-info  { flex:1; }
+  .tamper-label { font-size:12px; font-weight:600; color:var(--text); letter-spacing:1px; }
+  .tamper-sub   { font-size:10px; color:var(--dim); font-family:'Share Tech Mono',monospace; margin-top:2px; }
+  .tamper-actions { display:flex; gap:8px; }
+
+  .notify-panel { background:var(--panel); border:1px solid rgba(255,170,0,0.2); border-radius:4px; padding:14px 18px; flex-shrink:0; }
+  .np-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .np-left { display:flex; align-items:center; gap:10px; }
+  .np-fields { display:flex; gap:10px; margin-bottom:10px; }
+  .np-field { display:flex; flex-direction:column; gap:4px; flex:0 0 180px; }
+  .np-field-wide { flex:1; }
+  .np-label { font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); font-family:'Share Tech Mono',monospace; }
+  .np-input, .np-textarea { background:rgba(0,0,0,0.3); border:1px solid var(--border); color:var(--text); font-family:'Rajdhani',sans-serif; font-size:13px; padding:6px 10px; border-radius:3px; outline:none; resize:none; width:100%; }
+  .np-input:focus, .np-textarea:focus { border-color:rgba(255,170,0,0.4); }
+  .np-textarea { height:46px; line-height:1.4; }
+  .btn-save-notify { padding:7px 16px; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.35); color:var(--warn); font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:2px; text-transform:uppercase; cursor:pointer; border-radius:3px; transition:all 0.2s; }
+  .btn-save-notify:hover { background:rgba(255,170,0,0.2); box-shadow:0 0 15px rgba(255,170,0,0.25); }
+  .np-preview { display:flex; align-items:flex-start; gap:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:4px; padding:10px 14px; }
+  .np-preview-icon { font-size:18px; margin-top:1px; }
+  .np-preview-body { flex:1; }
+  .np-preview-title { font-size:12px; font-weight:700; color:#fff; margin-bottom:2px; letter-spacing:0.5px; }
+  .np-preview-msg   { font-size:11px; color:var(--dim); line-height:1.4; font-family:'Share Tech Mono',monospace; }
+
+  .allowlist-panel { background:var(--panel); border:1px solid rgba(0,255,153,0.15); border-radius:4px; padding:14px 18px; flex-shrink:0; }
+  .al-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .al-left { display:flex; align-items:center; gap:10px; }
+  .al-entries { min-height:28px; max-height:80px; overflow-y:auto; margin-bottom:8px; }
+  .al-entry { display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text); }
+  .al-entry:last-child { border-bottom:none; }
+  .al-entry-id { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .btn-al-remove { background:none; border:1px solid rgba(255,62,62,0.3); color:var(--danger); font-size:10px; padding:2px 8px; cursor:pointer; border-radius:2px; font-family:'Share Tech Mono',monospace; margin-left:8px; flex-shrink:0; }
+  .btn-al-remove:hover { background:rgba(255,62,62,0.1); }
+  .al-add { display:flex; gap:8px; margin-bottom:6px; }
+  .al-input { flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:var(--text); font-family:'Share Tech Mono',monospace; font-size:11px; padding:5px 9px; border-radius:3px; outline:none; }
+  .al-input:focus { border-color:rgba(0,255,153,0.3); }
+  .btn-al-add { padding:5px 14px; background:rgba(0,255,153,0.06); border:1px solid rgba(0,255,153,0.25); color:var(--safe); font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:1px; cursor:pointer; border-radius:3px; transition:all 0.2s; white-space:nowrap; }
+  .btn-al-add:hover { background:rgba(0,255,153,0.12); }
+  .btn-refresh-al { padding:5px 12px; background:none; border:1px solid var(--border); color:var(--dim); font-family:'Share Tech Mono',monospace; font-size:11px; cursor:pointer; border-radius:2px; transition:all 0.2s; }
+  .btn-refresh-al:hover { color:var(--safe); border-color:rgba(0,255,153,0.3); }
+  .al-hint { font-size:9px; color:var(--dim); font-family:'Share Tech Mono',monospace; line-height:1.4; }
+
+  .log-panel { background:var(--panel); border:1px solid var(--border); border-radius:4px; flex-shrink:0; min-height:110px; max-height:140px; display:flex; flex-direction:column; overflow:hidden; }
+  .log-header { padding:7px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .log-title { font-size:10px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; font-family:'Share Tech Mono',monospace; }
+  .btn-clear { font-size:9px; letter-spacing:1px; color:var(--dim); background:none; border:1px solid var(--border); padding:2px 8px; cursor:pointer; border-radius:2px; font-family:'Share Tech Mono',monospace; transition:all 0.2s; text-transform:uppercase; }
+  .btn-clear:hover { color:var(--text); border-color:var(--dim); }
+  .log-body { flex:1; overflow-y:auto; padding:8px 14px; font-family:'Share Tech Mono',monospace; font-size:11px; line-height:1.6; }
+  .log-body::-webkit-scrollbar { width:4px; }
+  .log-body::-webkit-scrollbar-track { background:transparent; }
+  .log-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .log-entry { margin-bottom:2px; display:flex; gap:0; }
+  .log-entry .ts  { color:var(--dim); white-space:pre; }
+  .log-entry .msg { color:var(--text); word-break:break-all; }
+  .log-entry.success .msg { color:var(--safe); }
+  .log-entry.error   .msg { color:var(--danger); }
+  .log-entry.warn    .msg { color:var(--warn); }
+  .log-entry.info    .msg { color:var(--accent); }
+
+  .loading { display:none; position:fixed; inset:0; background:rgba(10,12,16,0.85); z-index:500; align-items:center; justify-content:center; flex-direction:column; gap:16px; }
+  .loading.active { display:flex; }
+  .spinner { width:40px; height:40px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-text { font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:3px; color:var(--accent); text-transform:uppercase; }
+
+  .btn-refresh { font-size:10px; letter-spacing:2px; color:var(--dim); background:none; border:1px solid var(--border); padding:4px 12px; cursor:pointer; border-radius:2px; font-family:'Share Tech Mono',monospace; transition:all 0.2s; text-transform:uppercase; }
+  .btn-refresh:hover { color:var(--accent); border-color:rgba(0,212,255,0.4); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="34" height="34" rx="4" stroke="#00d4ff" stroke-width="1.5" fill="none" opacity="0.6"/>
+          <path d="M18 5 L31 12 L31 24 L18 31 L5 24 L5 12 Z" stroke="#00d4ff" stroke-width="1.2" fill="rgba(0,212,255,0.07)"/>
+          <circle cx="18" cy="18" r="5" fill="#00d4ff" opacity="0.9"/>
+          <path d="M18 13 L18 8 M18 23 L18 28 M13 18 L8 18 M23 18 L28 18" stroke="#00d4ff" stroke-width="1" opacity="0.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">USB<span>GUARD</span></div>
+        <div class="logo-sub">Enterprise Device Control</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="admin-badge" id="adminBadge">&#9679; Checking...</span>
+      <button class="btn-refresh" id="btnRefresh">&#8635; Refresh</button>
+      <button class="btn-close" id="btnClose">&#x2715;</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Status Bar: L1-L10 + Tamper Detection -->
+    <div class="status-bar">
+      <div class="status-card unknown" id="card-storage">
+        <div class="sc-label">USB Storage</div>
+        <div class="sc-value" id="val-storage">&#8212;</div>
+        <div class="sc-icon">&#128190;</div>
+      </div>
+      <div class="status-card unknown" id="card-writeprotect">
+        <div class="sc-label">Write Block</div>
+        <div class="sc-value" id="val-writeprotect">&#8212;</div>
+        <div class="sc-icon">&#128274;</div>
+      </div>
+      <div class="status-card unknown" id="card-autoplay">
+        <div class="sc-label">AutoPlay</div>
+        <div class="sc-value" id="val-autoplay">&#8212;</div>
+        <div class="sc-icon">&#9654;</div>
+      </div>
+      <div class="status-card unknown" id="card-watcher">
+        <div class="sc-label">Watcher</div>
+        <div class="sc-value" id="val-watcher">&#8212;</div>
+        <div class="sc-icon">&#128065;</div>
+      </div>
+      <div class="status-card unknown" id="card-phones">
+        <div class="sc-label">Phones/MTP</div>
+        <div class="sc-value" id="val-phones">&#8212;</div>
+        <div class="sc-icon">&#128241;</div>
+      </div>
+      <div class="status-card unknown" id="card-printers">
+        <div class="sc-label">Printers</div>
+        <div class="sc-value" id="val-printers">&#8212;</div>
+        <div class="sc-icon">&#128424;</div>
+      </div>
+      <div class="status-card unknown" id="card-sdcard">
+        <div class="sc-label">SD Card</div>
+        <div class="sc-value" id="val-sdcard">&#8212;</div>
+        <div class="sc-icon">&#128179;</div>
+      </div>
+      <div class="status-card unknown" id="card-bluetooth">
+        <div class="sc-label">BT File XFR</div>
+        <div class="sc-value" id="val-bluetooth">&#8212;</div>
+        <div class="sc-icon">&#128246;</div>
+      </div>
+      <div class="status-card unknown" id="card-firewire">
+        <div class="sc-label">FireWire</div>
+        <div class="sc-value" id="val-firewire">&#8212;</div>
+        <div class="sc-icon">&#9889;</div>
+      </div>
+      <div class="status-card unknown" id="card-tamper">
+        <div class="sc-label">Tamper Det.</div>
+        <div class="sc-value" id="val-tamper">&#8212;</div>
+        <div class="sc-icon">&#128737;</div>
+      </div>
+    </div>
+
+    <!-- Control Grid -->
+    <div class="control-grid">
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">&#128190;</div>
+          <div>
+            <div class="cp-title">Mass Storage</div>
+            <div class="cp-desc">USBSTOR + Write-protect + AutoPlay (L1&#8211;L4)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">Flash Drives</span>
+          <span class="scope-tag">External HDDs</span>
+          <span class="scope-tag">USB-C Storage</span>
+          <span class="scope-tag">USB CD/DVD</span>
+          <span class="scope-tag excluded">Charging</span>
+          <span class="scope-tag excluded">Keyboards/Mice</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-storage">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-storage">&#10003; Allow</button>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">&#128241;</div>
+          <div>
+            <div class="cp-title">Phones &amp; Cameras</div>
+            <div class="cp-desc">WPD / MTP / PTP driver stack (L7)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">Android (MTP)</span>
+          <span class="scope-tag">iPhone / iTunes</span>
+          <span class="scope-tag">Digital Cameras</span>
+          <span class="scope-tag">Media Players</span>
+          <span class="scope-tag excluded">USB Charging</span>
+          <span class="scope-tag excluded">Keyboards / Mice</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-phones">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-phones">&#10003; Allow</button>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon">&#128424;</div>
+          <div>
+            <div class="cp-title">USB Printers</div>
+            <div class="cp-desc">Printer class install policy (L3)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">USB Printers</span>
+          <span class="scope-tag">USB 2.0 Print</span>
+          <span class="scope-tag">USB 3.0 Print</span>
+          <span class="scope-tag excluded">Network Printers</span>
+          <span class="scope-tag excluded">PDF / Virtual</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-printers">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-printers">&#10003; Allow</button>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon" style="background:rgba(255,170,0,0.08);border-color:rgba(255,170,0,0.2);">&#128179;</div>
+          <div>
+            <div class="cp-title">SD Card Reader</div>
+            <div class="cp-desc">sdbus driver (L8)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">SD Cards</span>
+          <span class="scope-tag">microSD</span>
+          <span class="scope-tag">Built-in Readers</span>
+          <span class="scope-tag">USB SD Readers</span>
+          <span class="scope-tag excluded">USB Audio</span>
+          <span class="scope-tag excluded">Charging</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-sdcard">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-sdcard">&#10003; Allow</button>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon" style="background:rgba(0,212,255,0.08);border-color:rgba(0,212,255,0.2);">&#128246;</div>
+          <div>
+            <div class="cp-title">Bluetooth File XFR</div>
+            <div class="cp-desc">BthOBEX / RFCOMM / OBEX GUID (L9)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">OBEX Push</span>
+          <span class="scope-tag">BT FTP</span>
+          <span class="scope-tag">RFCOMM</span>
+          <span class="scope-tag excluded">BT Audio / HFP</span>
+          <span class="scope-tag excluded">BT Mouse / KB</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-bluetooth">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-bluetooth">&#10003; Allow</button>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cp-header">
+          <div class="cp-icon" style="background:rgba(255,62,62,0.08);border-color:rgba(255,62,62,0.2);">&#9889;</div>
+          <div>
+            <div class="cp-title">FireWire / 1394</div>
+            <div class="cp-desc">1394ohci driver &#8212; DMA-capable (L10)</div>
+          </div>
+        </div>
+        <div class="cp-scope">
+          <span class="scope-tag">FireWire 400</span>
+          <span class="scope-tag">FireWire 800</span>
+          <span class="scope-tag">IEEE 1394</span>
+          <span class="scope-tag excluded">USB (separate)</span>
+          <span class="scope-tag excluded">Thunderbolt (L6)</span>
+        </div>
+        <div class="cp-actions">
+          <button class="btn btn-block"   data-action="block-firewire">&#8856; Block</button>
+          <button class="btn btn-unblock" data-action="unblock-firewire">&#10003; Allow</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Master Control -->
+    <div class="master-panel">
+      <div class="master-label">
+        <div class="master-title">Master Control</div>
+        <div class="master-sub">Apply to all 10 layers simultaneously</div>
+      </div>
+      <div class="master-actions">
+        <button class="btn-master-block"   data-action="block">&#8856; Block All</button>
+        <button class="btn-master-unblock" data-action="unblock">&#10003; Allow All</button>
+      </div>
+      <div class="tamper-row">
+        <div class="tamper-info">
+          <div class="tamper-label">Tamper Detection</div>
+          <div class="tamper-sub">Re-applies policy if registry is reverted (every 5 min)</div>
+        </div>
+        <div class="tamper-actions">
+          <button class="btn btn-block"   data-action="install-tamper-detection">&#9711; Enable</button>
+          <button class="btn btn-unblock" data-action="remove-tamper-detection">&#10003; Disable</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Config -->
+    <div class="notify-panel">
+      <div class="np-header">
+        <div class="np-left">
+          <div class="cp-icon" style="background:rgba(255,170,0,0.08);border-color:rgba(255,170,0,0.2);">&#128276;</div>
+          <div>
+            <div class="cp-title">User Notification</div>
+            <div class="cp-desc">Toast shown when a USB drive is plugged in</div>
+          </div>
+        </div>
+        <button class="btn-save-notify" id="btnSaveNotify">&#128190; Save</button>
+      </div>
+      <div class="np-fields">
+        <div class="np-field">
+          <label class="np-label">Company / Team Name</label>
+          <input class="np-input" id="inputCompany" type="text" value="IT Security" maxlength="60" placeholder="e.g. Acme IT Security"/>
+        </div>
+        <div class="np-field np-field-wide">
+          <label class="np-label">Message <span style="color:var(--dim);font-size:9px">(use {COMPANY} for the name above)</span></label>
+          <textarea class="np-textarea" id="inputMessage" rows="2">USB mass storage access is disabled by {COMPANY} policy. USB charging is unaffected. Contact IT support if you need access.</textarea>
+        </div>
+      </div>
+      <div class="np-preview">
+        <div class="np-preview-icon">&#128276;</div>
+        <div class="np-preview-body">
+          <div class="np-preview-title">USB Storage Blocked</div>
+          <div class="np-preview-msg" id="previewMsg">Preview updates as you type...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Allowlist Panel -->
+    <div class="allowlist-panel">
+      <div class="al-header">
+        <div class="al-left">
+          <div class="cp-icon" style="background:rgba(0,255,153,0.05);border-color:rgba(0,255,153,0.15);">&#10003;</div>
+          <div>
+            <div class="cp-title">Device Allowlist</div>
+            <div class="cp-desc">Trusted USB drives exempt from auto-eject (by PNP Device ID)</div>
+          </div>
+        </div>
+        <button class="btn-refresh-al" id="btnRefreshAl">&#8635; Refresh</button>
+      </div>
+      <div class="al-entries" id="alEntries"></div>
+      <div class="al-add">
+        <input class="al-input" id="alInput" type="text" placeholder="PNP Device ID  e.g. USBSTOR\DISK&amp;VEN_SanDisk&amp;PROD_..."/>
+        <button class="btn-al-add" id="btnAlAdd">+ Add</button>
+      </div>
+      <div class="al-hint">Tip: run USBGuard_Advanced.ps1 list-devices to find the PNP Device ID of a connected USB drive.</div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-panel">
+      <div class="log-header">
+        <span class="log-title">&#9632; Activity Log</span>
+        <button class="btn-clear" id="btnClearLog">Clear</button>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="loading" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Applying Changes...</div>
+</div>
+
+<!-- Pure utility functions — loaded first so the inline script can use them -->
+<script src="app.js"></script>
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let isAdmin = false;
+let _reqId  = 0;
+const _pending = {};
+
+// ── WebView2 bridge ──────────────────────────────────────────────────────────
+
+function callHost(msgType, action, extras) {
+  return new Promise(resolve => {
+    const id = ++_reqId;
+    _pending[id] = resolve;
+    window.chrome.webview.postMessage(
+      JSON.stringify({ type: msgType, action, reqId: id, ...extras })
+    );
+  });
+}
+
+window.chrome.webview.addEventListener('message', e => {
+  let msg;
+  try { msg = JSON.parse(e.data); } catch { return; }
+  if (msg.reqId && _pending[msg.reqId]) {
+    const resolve = _pending[msg.reqId];
+    delete _pending[msg.reqId];
+    resolve(msg);
+  }
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', () => {
+  wireButtons();
+  const ci = document.getElementById('inputCompany');
+  const mi = document.getElementById('inputMessage');
+  if (ci) ci.addEventListener('input', updatePreview);
+  if (mi) mi.addEventListener('input', updatePreview);
+  updatePreview();
+  addLog('USBGuard initializing...', 'info');
+  initApp();
+});
+
+function wireButtons() {
+  // Action buttons via data-action attribute — no inline JS
+  document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => runAction(btn.dataset.action));
+  });
+  document.getElementById('btnRefresh').addEventListener('click', refreshStatus);
+  document.getElementById('btnClose').addEventListener('click', () => window.close());
+  document.getElementById('btnSaveNotify').addEventListener('click', saveNotifyConfig);
+  document.getElementById('btnRefreshAl').addEventListener('click', () => refreshAllowlist(false));
+  document.getElementById('btnAlAdd').addEventListener('click', addAllowlistEntry);
+  document.getElementById('btnClearLog').addEventListener('click', clearLog);
+}
+
+async function initApp() {
+  try {
+    const res = await callHost('init', 'init', {});
+    isAdmin = res.isAdmin === true;
+    const badge = document.getElementById('adminBadge');
+    if (isAdmin) {
+      badge.textContent = '\u25CF Administrator';
+      badge.className   = 'admin-badge';
+    } else {
+      badge.textContent = '\u26A0 Not Admin';
+      badge.className   = 'admin-badge no-admin';
+      addLog('WARNING: Not running as Administrator. Operations will fail.', 'error');
+    }
+  } catch (err) {
+    addLog('Init error: ' + err, 'error');
+  }
+  await refreshStatus();
+}
+
+// ── Status refresh ───────────────────────────────────────────────────────────
+
+async function refreshStatus() {
+  addLog('Querying system status...', 'info');
+  showLoading('Querying status...');
+  try {
+    const res = await callHost('run-action', 'status', {});
+    parseStatus(res.output || '');
+  } catch (err) {
+    addLog('Status check failed: ' + err, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function parseStatus(output) {
+  // extractStatusJson and resolveCardState are defined in app.js
+  const s = extractStatusJson(output);
+  if (s) updateStatusUI(s);
+  else   addLog('Could not parse status output', 'warn');
+}
+
+function updateStatusUI(s) {
+  updateCard('card-storage',    'val-storage',    s.UsbStorage    || 'unknown');
+  updateCard('card-writeprotect','val-writeprotect', resolveCardState('WriteProtect', s.WriteProtect),
+    { active:'ACTIVE', inactive:'INACTIVE' });
+  updateCard('card-autoplay','val-autoplay', resolveCardState('AutoPlayKilled', s.AutoPlayKilled),
+    { disabled:'KILLED', enabled:'LIVE' });
+  updateCard('card-watcher','val-watcher', resolveCardState('VolumeWatcher', s.VolumeWatcher),
+    { running:'RUNNING', ready:'READY', not_installed:'OFF' });
+
+  updateCard('card-phones',    'val-phones',    s.MtpPtp        || 'unknown');
+  updateCard('card-printers',  'val-printers',  s.UsbPrinters   || 'unknown');
+  updateCard('card-sdcard',    'val-sdcard',    s.SdCard        || 'unknown');
+  updateCard('card-bluetooth', 'val-bluetooth', s.BluetoothOBEX || 'unknown');
+  updateCard('card-firewire',  'val-firewire',  s.FireWire      || 'unknown');
+  updateCard('card-tamper',    'val-tamper',    s.TamperDetection || 'not_installed',
+    { running:'ACTIVE', ready:'READY', not_installed:'OFF' });
+
+  refreshAllowlist(true);
+
+  addLog(
+    'Driver:' + (s.UsbStorage||'?')      +
+    ' WP:'    + (s.WriteProtect||'?')    +
+    ' AP:'    + (s.AutoPlayKilled||'?')  +
+    ' Watch:' + (s.VolumeWatcher||'?')   +
+    ' MTP:'   + (s.MtpPtp||'?')          +
+    ' Print:' + (s.UsbPrinters||'?')     +
+    ' SD:'    + (s.SdCard||'?')          +
+    ' BT:'    + (s.BluetoothOBEX||'?')   +
+    ' FW:'    + (s.FireWire||'?')        +
+    ' Tmpr:'  + (s.TamperDetection||'?') +
+    ' AL:'    + (s.AllowlistCount||0),
+    'info'
+  );
+}
+
+function updateCard(cardId, valId, state, customLabels) {
+  const card = document.getElementById(cardId);
+  const val  = document.getElementById(valId);
+  if (!card || !val) return;
+  card.className = 'status-card ' + state;
+  const defaults = { blocked:'BLOCKED', allowed:'ALLOWED', unknown:'UNKNOWN', partial:'PARTIAL', not_present:'N/A' };
+  val.textContent = (customLabels || {})[state] || defaults[state] || state.toUpperCase();
+}
+
+// ── Action runner ────────────────────────────────────────────────────────────
+
+const ACTION_LABELS = {
+  'block':                    'Blocking all 10 layers...',
+  'unblock':                  'Unblocking all layers...',
+  'block-storage':            'Blocking USB mass storage...',
+  'unblock-storage':          'Allowing USB mass storage...',
+  'block-phones':             'Blocking phones and cameras (MTP/PTP)...',
+  'unblock-phones':           'Allowing phones and cameras (MTP/PTP)...',
+  'block-printers':           'Blocking USB printers...',
+  'unblock-printers':         'Allowing USB printers...',
+  'block-sdcard':             'Blocking SD card reader...',
+  'unblock-sdcard':           'Allowing SD card reader...',
+  'block-bluetooth':          'Blocking Bluetooth file transfer...',
+  'unblock-bluetooth':        'Allowing Bluetooth file transfer...',
+  'block-firewire':           'Blocking FireWire / IEEE 1394...',
+  'unblock-firewire':         'Allowing FireWire / IEEE 1394...',
+  'install-tamper-detection': 'Enabling tamper detection...',
+  'remove-tamper-detection':  'Disabling tamper detection...',
+};
+
+async function runAction(action, extras) {
+  if (!isAdmin) { addLog('ERROR: Administrator privileges required.', 'error'); return; }
+  showLoading(ACTION_LABELS[action] || 'Applying changes...');
+  addLog('Action: ' + action, 'info');
+  try {
+    const res = await callHost('run-action', action, extras || {});
+    processOutput(res.output || '', res.exitCode);
+  } catch (err) {
+    addLog('Error: ' + err, 'error');
+  } finally {
+    hideLoading();
+    await refreshStatus();
+  }
+}
+
+function processOutput(output, exitCode) {
+  // classifyLogLevel and stripLogPrefix are defined in app.js
+  output.split('\n').forEach(line => {
+    line = line.trim();
+    if (!line) return;
+    const msg   = stripLogPrefix(line);
+    const level = classifyLogLevel(line);
+    if (msg) addLog(msg, level);
+  });
+  if (exitCode !== 0 && exitCode !== undefined) addLog('Exit code: ' + exitCode, 'warn');
+}
+
+// ── Allowlist ────────────────────────────────────────────────────────────────
+
+async function refreshAllowlist(silent) {
+  const el = document.getElementById('alEntries');
+  if (!el) return;
+  try {
+    const res = await callHost('run-action', 'list-allowlist', {});
+    const raw = (res.output || '').trim();
+    if (!raw || raw === 'null' || raw === '[]') { renderAllowlist([], el); return; }
+    const m = raw.match(/\[[\s\S]*\]/);
+    const entries = m ? JSON.parse(m[0]) : [];
+    renderAllowlist(Array.isArray(entries) ? entries : [], el);
+  } catch (err) {
+    if (!silent) addLog('Allowlist refresh failed: ' + err, 'warn');
+    renderAllowlist([], el);
+  }
+}
+
+function renderAllowlist(entries, el) {
+  // Build DOM nodes — no innerHTML with dynamic content
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  if (!entries || entries.length === 0) {
+    const span = document.createElement('span');
+    span.style.cssText = 'color:var(--dim);font-size:11px;font-family:\'Share Tech Mono\',monospace';
+    span.textContent = 'No allowlisted devices.';
+    el.appendChild(span);
+    return;
+  }
+
+  entries.filter(Boolean).forEach(rawEntry => {
+    const entry = String(rawEntry);
+    const row   = document.createElement('div');
+    row.className = 'al-entry';
+
+    const idSpan = document.createElement('span');
+    idSpan.className = 'al-entry-id';
+    idSpan.title     = entry;
+    idSpan.textContent = entry;
+
+    const btn = document.createElement('button');
+    btn.className   = 'btn-al-remove';
+    btn.textContent = 'Remove';
+    btn.addEventListener('click', () => removeAllowlistEntry(entry));
+
+    row.appendChild(idSpan);
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
+}
+
+// isValidPnpId is defined in app.js
+
+async function addAllowlistEntry() {
+  const inp = document.getElementById('alInput');
+  const val = inp ? inp.value.trim() : '';
+  if (!val) return;
+  if (!isAdmin)          { addLog('Administrator privileges required', 'error'); return; }
+  if (!isValidPnpId(val)){ addLog('Invalid Device ID — only alphanumeric, backslash, ampersand, dot, braces allowed (max 200 chars)', 'error'); return; }
+  await runAction('add-allowlist', { deviceId: val });
+  if (inp) inp.value = '';
+}
+
+async function removeAllowlistEntry(deviceId) {
+  if (!isAdmin)               { addLog('Administrator privileges required', 'error'); return; }
+  if (!isValidPnpId(deviceId)){ addLog('Invalid Device ID \u2014 cannot remove', 'error'); return; }
+  await runAction('remove-allowlist', { deviceId });
+}
+
+// ── Notification config ──────────────────────────────────────────────────────
+
+async function saveNotifyConfig() {
+  const company = document.getElementById('inputCompany').value.trim();
+  const msg     = document.getElementById('inputMessage').value.trim();
+  if (!company) { addLog('Company name is required', 'warn'); return; }
+  if (!msg)     { addLog('Message is required', 'warn'); return; }
+  if (!isAdmin) { addLog('Administrator privileges required to save config', 'error'); return; }
+  await runAction('set-notify-config', { companyName: company, notifyMessage: msg });
+  updatePreview();
+}
+
+function updatePreview() {
+  // resolveNotifyTemplate is defined in app.js
+  const company = document.getElementById('inputCompany')?.value || 'IT Security';
+  const msg     = document.getElementById('inputMessage')?.value || '';
+  const el      = document.getElementById('previewMsg');
+  if (el) el.textContent = resolveNotifyTemplate(msg, company);
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+
+function showLoading(text) {
+  document.getElementById('loadingText').textContent = text || 'Applying changes...';
+  document.getElementById('loadingOverlay').className = 'loading active';
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').className = 'loading';
+}
+
+function addLog(msg, type) {
+  const body  = document.getElementById('logBody');
+  const d     = new Date();
+  const ts    = '[' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '] ';
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + (type || '');
+
+  const tsSpan  = document.createElement('span');
+  tsSpan.className   = 'ts';
+  tsSpan.textContent = ts;
+
+  const msgSpan = document.createElement('span');
+  msgSpan.className   = 'msg';
+  msgSpan.textContent = String(msg);   // textContent — no XSS possible
+
+  entry.appendChild(tsSpan);
+  entry.appendChild(msgSpan);
+  body.appendChild(entry);
+  body.scrollTop = body.scrollHeight;
+  while (body.children.length > 200) body.removeChild(body.firstChild);
+}
+
+function clearLog() { document.getElementById('logBody').textContent = ''; }
+
+function pad(n) { return n < 10 ? '0' + n : String(n); }
+</script>
+</body>
+</html>

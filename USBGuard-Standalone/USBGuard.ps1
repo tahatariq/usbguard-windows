@@ -125,7 +125,7 @@ function Write-AuditEntry {
     try {
         if (-not (Test-Path $USBGUARD_DIR)) { New-Item -Path $USBGUARD_DIR -ItemType Directory -Force | Out-Null }
         Add-Content -Path $AUDIT_LOG -Value $line -Encoding UTF8
-    } catch {}
+    } catch { $null = $_ }  # non-fatal — don't abort the main operation if audit log fails
 }
 
 function Write-EventLogEntry {
@@ -135,7 +135,7 @@ function Write-EventLogEntry {
             [System.Diagnostics.EventLog]::CreateEventSource("USBGuard", "Application")
         }
         Write-EventLog -LogName Application -Source "USBGuard" -EventId $EventId -EntryType $EntryType -Message $Message
-    } catch {}
+    } catch { $null = $_ }  # non-fatal — don't abort the main operation if event log write fails
 }
 
 # ── Registry helpers ───────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ function Block-WpdMtp {
                 Stop-Service $s -Force -EA SilentlyContinue
                 Write-Log "L7d: Stopped running service: $s" "SUCCESS"
             }
-        } catch {}
+        } catch { $null = $_ }  # service may not exist on all systems
     }
 
     # 7e — Deny install on the class keys directly (belt-and-suspenders)
@@ -378,7 +378,7 @@ function Disable-AutoPlay {
         Set-Service  "ShellHWDetection" -StartupType Disabled -EA SilentlyContinue
         Stop-Service "ShellHWDetection" -Force -EA SilentlyContinue
         Write-Log "L4: ShellHWDetection stopped (no AutoPlay popup)" "SUCCESS"
-    } catch {}
+    } catch { $null = $_ }  # service may not be running; already stopped is acceptable
     Write-Log "L4: AutoPlay disabled (NoDriveTypeAutoRun=0xFF)" "SUCCESS"
 }
 
@@ -392,7 +392,7 @@ function Enable-AutoPlay {
         Set-Service  "ShellHWDetection" -StartupType Automatic -EA SilentlyContinue
         Start-Service "ShellHWDetection" -EA SilentlyContinue
         Write-Log "L4: ShellHWDetection re-enabled" "SUCCESS"
-    } catch {}
+    } catch { $null = $_ }  # service may already be running; not a fatal condition
     Write-Log "L4: AutoPlay restored to defaults" "SUCCESS"
 }
 
@@ -760,7 +760,7 @@ function Eject-AllRemovableVolumes {
                 try {
                     $sh = New-Object -ComObject Shell.Application
                     $sh.Namespace(17).ParseName("$($v.DriveLetter):").InvokeVerb("Eject")
-                } catch {}
+                } catch { $null = $_ }  # Shell.Application fallback; ignore if unavailable
             }
         } catch { Write-Log "Eject error $($v.DriveLetter): $_" "WARN" }
     }

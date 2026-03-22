@@ -84,7 +84,31 @@ Full API reference: [USBGuard-API/README.md](USBGuard-API/README.md)
 
 ### Standalone (GUI + PowerShell)
 
-Best for single machines, labs, and kiosks. Includes an HTA graphical interface and toast notifications.
+Best for single machines, labs, and kiosks. Includes a graphical interface and toast notifications.
+
+The GUI ships in two forms — the launcher picks the WebView2 exe automatically if built, otherwise falls back to the HTA:
+
+| GUI | Engine | Recommended |
+|-----|--------|-------------|
+| **WebView2** (`USBGuard-WebView2\USBGuard.exe`) | Chromium / Edge WebView2 | Yes — modern, no LOLBin risk |
+| **HTA** (`USBGuard.hta`) | MSHTML / IE11 via `mshta.exe` | Fallback only |
+
+**Build the WebView2 GUI** (requires [.NET 8 SDK](https://dotnet.microsoft.com/download)):
+
+```powershell
+cd USBGuard-Standalone\USBGuard-WebView2
+.\Build.ps1 -Release        # single-file self-contained exe
+```
+
+Output: `bin\Release\net8.0-windows\win-x64\publish\USBGuard.exe` — copy the `publish\` folder to `USBGuard-WebView2\` on the target machine.
+
+**WebView2 Runtime prerequisite on target machines:**
+
+| Environment | Action |
+|---|---|
+| Windows 11 | Pre-installed — nothing needed |
+| Windows 10 managed | Deploy [Evergreen Bootstrapper](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) via SCCM / Intune / BigFix |
+| Air-gapped | Bundle Fixed Version runtime (offline installer, ~160 MB) |
 
 [USBGuard-Standalone/README.md](USBGuard-Standalone/README.md)
 
@@ -153,8 +177,8 @@ light.exe Product.wixobj -o USBGuard.msi
 ```
 usbguard-windows/
 ├── USBGuard-Standalone/
-│   ├── Launch_USBGuard.bat              # Start here for GUI
-│   ├── USBGuard.hta                     # Graphical admin interface
+│   ├── Launch_USBGuard.bat              # Start here — auto-selects WebView2 or HTA
+│   ├── USBGuard.hta                     # Legacy HTA GUI (MSHTML fallback)
 │   ├── USBGuard.ps1                     # PowerShell backend (all 10 layers)
 │   ├── USBGuard_Advanced.ps1            # List connected USB devices, export policy
 │   ├── USBGuard_Snapshot.ps1            # Pre-block device snapshot + allowlist setup
@@ -165,7 +189,13 @@ usbguard-windows/
 │   ├── Detect-USBGuard.ps1              # Intune Win32 app detection script
 │   ├── USBGuard.admx                    # GPO ADMX template
 │   ├── en-US/USBGuard.adml              # GPO ADML localization (en-US)
-│   └── installer/Product.wxs           # WiX v3 MSI installer scaffold
+│   ├── installer/Product.wxs           # WiX v3 MSI installer scaffold
+│   └── USBGuard-WebView2/              # WebView2 GUI host (Chromium, replaces HTA)
+│       ├── USBGuard.csproj             # .NET 8 WinForms project
+│       ├── MainForm.cs                 # Host: WebView2 control, PS invocation, RBAC
+│       ├── app.manifest                # requireAdministrator + PerMonitorV2 DPI
+│       ├── Build.ps1                   # .\Build.ps1 -Release → single-file exe
+│       └── wwwroot/index.html          # Full UI — same dark theme, 10-layer panels
 │
 ├── USBGuard-BigFix/
 │   ├── Fixlet1_ApplyPolicy.bes          # All 10 layers (run first)

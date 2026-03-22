@@ -170,8 +170,22 @@ jobs:
           $failCount = 0
           foreach ($file in $files) {
             Write-Host "`n=== Analyzing $file ==="
-            # Exclude PSUseApprovedVerbs — pre-existing naming (Ensure-RegPath, Eject-AllRemovableVolumes)
-            $results = Invoke-ScriptAnalyzer -Path $file -Severity Warning -ExcludeRule PSUseApprovedVerbs
+            # Excluded rules (all intentional design choices — see comments):
+            #   PSUseApprovedVerbs                        — pre-existing internal helpers (Ensure-RegPath, Eject-AllRemovableVolumes, Block-UsbPrinters)
+            #   PSAvoidUsingWriteHost                     — Write-Host is the stdout capture mechanism used by HTA/WebView2 to read PS output
+            #   PSAvoidUsingWMICmdlet                     — WMI method invocation required (Win32_Volume.Dismount()); scripts target PS 5.1
+            #   PSUseShouldProcessForStateChangingFunctions — internal helpers not exposed as cmdlets; no -WhatIf/-Confirm pipeline use
+            #   PSUseSingularNouns                        — established internal function names (Get-AllowlistEntries, Get-UsbDevices, etc.)
+            #   PSUseBOMForUnicodeEncodedFile             — files use UTF-8 without BOM, which is the PS 5.1 default for new scripts
+            $excludeRules = @(
+                'PSUseApprovedVerbs',
+                'PSAvoidUsingWriteHost',
+                'PSAvoidUsingWMICmdlet',
+                'PSUseShouldProcessForStateChangingFunctions',
+                'PSUseSingularNouns',
+                'PSUseBOMForUnicodeEncodedFile'
+            )
+            $results = Invoke-ScriptAnalyzer -Path $file -Severity Warning -ExcludeRule $excludeRules
 
             if ($results) {
               Write-Host "Issues found:"
@@ -273,10 +287,57 @@ jobs:
 
           echo "All documentation files present."
 
+  webview2-tests:
+    name: WebView2 Tests (C# xUnit + JS Jest)
+    runs-on: windows-latest
+    needs: syntax-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js (for Jest)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: C# xUnit — build and run InputValidator tests
+        shell: powershell
+        run: |
+          dotnet test `
+            USBGuard-Standalone/USBGuard-WebView2/tests/USBGuard.Tests.csproj `
+            --logger "trx;LogFileName=test-results-webview2-csharp.trx" `
+            --results-directory test-results-webview2 `
+            -v normal
+
+      - name: JS Jest — install dependencies and run
+        shell: powershell
+        run: |
+          cd USBGuard-Standalone/USBGuard-WebView2/tests
+          npm ci
+          # Jest outputs to stdout; convert to JUnit for publish step
+          npx jest --reporters=default --reporters=jest-junit `
+            --testResultsProcessor=jest-junit 2>&1 | Tee-Object -Variable jestOutput
+          $exitCode = $LASTEXITCODE
+          Write-Host $jestOutput
+          exit $exitCode
+        env:
+          JEST_JUNIT_OUTPUT_FILE: ../../../test-results-webview2/test-results-webview2-jest.xml
+
+      - name: Upload WebView2 Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-webview2
+          path: test-results-webview2/
+
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [syntax-check, pester-tests, publish-test-results, code-analysis, registry-validation, documentation-check]
+    needs: [syntax-check, pester-tests, publish-test-results, code-analysis, registry-validation, documentation-check, webview2-tests]
     if: always()
     steps:
       - name: Check Results
@@ -288,12 +349,14 @@ jobs:
           echo "Code Analysis:         ${{ needs.code-analysis.result }}"
           echo "Registry Validation:   ${{ needs.registry-validation.result }}"
           echo "Documentation:         ${{ needs.documentation-check.result }}"
+          echo "WebView2 Tests:        ${{ needs.webview2-tests.result }}"
           echo ""
 
           if [ "${{ needs.syntax-check.result }}" = "failure" ] || \
              [ "${{ needs.pester-tests.result }}" = "failure" ] || \
              [ "${{ needs.code-analysis.result }}" = "failure" ] || \
-             [ "${{ needs.registry-validation.result }}" = "failure" ]; then
+             [ "${{ needs.registry-validation.result }}" = "failure" ] || \
+             [ "${{ needs.webview2-tests.result }}" = "failure" ]; then
             echo "Pipeline FAILED"
             exit 1
           else

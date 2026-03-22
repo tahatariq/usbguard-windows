@@ -11,11 +11,76 @@ Step-by-step guide to deploying USBGuard on a single Windows machine. No BigFix 
 - A local Administrator account (you will be prompted by UAC)
 - The `USBGuard-Standalone` folder copied to the machine — for example, to `C:\Tools\USBGuard\`
 
+**GUI options:**
+
+| Option | Engine | Requirement | Notes |
+|--------|--------|-------------|-------|
+| **WebView2** (default if built) | Chromium / Edge WebView2 | .NET 8 runtime (pre-installed Win11; deploy via SCCM/Intune for Win10) | Recommended — see [Building the WebView2 GUI](#building-the-webview2-gui) |
+| **HTA** (legacy fallback) | MSHTML / IE11 | None beyond Windows | Used automatically if `USBGuard.exe` is not present |
+
+`Launch_USBGuard.bat` picks up `USBGuard-WebView2\USBGuard.exe` automatically if it exists; otherwise it falls back to `mshta.exe USBGuard.hta`.
+
 **What USBGuard will NOT block:**
 - USB keyboards and mice
 - USB audio devices and headsets
 - USB charging (phones charging over USB are fine — only data is blocked)
-- Network drives, cloud sync (OneDrive, Dropbox), Bluetooth
+- Network drives, cloud sync (OneDrive, Dropbox)
+
+---
+
+## Building the WebView2 GUI
+
+The WebView2 host is a .NET 8 WinForms application. Build it once, then distribute the output folder alongside the PowerShell scripts.
+
+### Prerequisites
+
+| Prerequisite | Where to get it |
+|---|---|
+| .NET 8 SDK (build machine only) | https://dotnet.microsoft.com/download |
+| WebView2 Runtime (target machines) | Pre-installed on Windows 11. For Windows 10 managed fleet: deploy [Evergreen Bootstrapper](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) via SCCM / Intune / BigFix before rolling out the exe. For air-gapped environments: use the Fixed Version offline installer (~160 MB). |
+
+### Build steps
+
+```powershell
+# From the USBGuard-Standalone\USBGuard-WebView2\ folder:
+
+# Option A — debug build (fast, for testing)
+.\Build.ps1
+
+# Option B — single-file self-contained release exe (for distribution)
+.\Build.ps1 -Release
+```
+
+The release output is at:
+```
+USBGuard-WebView2\bin\Release\net8.0-windows\win-x64\publish\USBGuard.exe
+```
+
+### Deployment
+
+After building, copy the entire `publish\` folder to the target machine's `USBGuard-Standalone\USBGuard-WebView2\` directory (so `Launch_USBGuard.bat` can find it):
+
+```
+USBGuard-Standalone\
+├── USBGuard.ps1
+├── Launch_USBGuard.bat        ← run this; auto-detects WebView2 vs HTA
+└── USBGuard-WebView2\
+    └── USBGuard.exe           ← single-file exe, ~120–160 MB self-contained
+```
+
+Or, for MSI/enterprise distribution, reference the exe path from your deployment tool and ensure the WebView2 Runtime prerequisite is installed first.
+
+### Intune Win32 App deployment
+
+Use the included scripts for Intune packaging:
+
+| Script | Role |
+|--------|------|
+| `Install-USBGuard.ps1` | Install command — applies all 10 layers + watcher + tamper detection |
+| `Uninstall-USBGuard.ps1` | Uninstall command — reverses all layers |
+| `Detect-USBGuard.ps1` | Detection rule — checks USBSTOR Start value |
+
+Package the `USBGuard-Standalone` folder (including the built `USBGuard-WebView2\` subfolder) as a `.intunewin` file with `Install-USBGuard.ps1` as the install command. Add a dependency on the WebView2 Runtime Win32 app if targeting Windows 10.
 
 ---
 
@@ -49,11 +114,11 @@ If the machine already has USB storage devices plugged in that you want to keep 
 
 1. Double-click `Launch_USBGuard.bat`
 2. Click **Yes** on the UAC prompt
-3. The USBGuard admin interface will open
+3. The USBGuard admin interface opens
 
-The status bar at the top shows the current state of all 7 layers in real time:
-- **Green / BLOCKED** — that layer is active and blocking
-- **Red / ALLOWED** — that layer is off, devices can get through
+The status bar at the top shows the current state of all 10 protection layers:
+- **Red / BLOCKED** — that layer is active and blocking
+- **Green / ALLOWED** — that layer is off, devices can get through
 - **Amber / UNKNOWN** — USBGuard cannot read the status (key missing or task not installed)
 
 ---
@@ -62,10 +127,10 @@ The status bar at the top shows the current state of all 7 layers in real time:
 
 Before blocking, set the notification message users will see when they plug in a USB device.
 
-1. Scroll down to the **Notification Settings** panel
+1. Scroll down to the **User Notification** panel
 2. Enter your company name (e.g. `Acme IT Security`)
 3. Enter a message (e.g. `USB storage is blocked by IT policy. Call ext 1234 for temporary access.`)
-4. Click **Save Notification Settings**
+4. Click **Save**
 
 > You can use `{COMPANY}` as a placeholder in the message — it will be replaced by the company name you entered.
 
@@ -77,22 +142,27 @@ Before blocking, set the notification message users will see when they plug in a
 
 In the GUI, click **Block All** in the Master Control section.
 
-This applies all 7 layers simultaneously:
-- USB flash drives and external hard drives → blocked (L1, L2, L3)
+This applies all 10 layers simultaneously:
+- USB flash drives and external hard drives → blocked (L1, L2, L3, L4)
+- Volume Watcher → installed and started (L5)
 - Thunderbolt drives → blocked (L6)
 - Phones (Android MTP, iPhone PTP) and cameras → blocked (L7)
-- AutoPlay popup → killed (L4)
-- Background volume watcher → installed and started (L5)
+- SD card readers → blocked (L8)
+- Bluetooth file transfer → blocked (L9)
+- FireWire / IEEE 1394 → blocked (L10)
 
 ### Option B — Selective Block
 
-Use the per-category buttons if you only want to block certain device types:
+Use the per-category buttons to block only specific device types:
 
 | Button | What it blocks |
 |--------|----------------|
 | Block Mass Storage | USB drives, external HDDs, USB-C drives (L1–L4, L5, L6) |
 | Block Phones/MTP/PTP | Android, iPhone, cameras, media players (L7) |
 | Block Printers | USB printers (L3 printer GUID) |
+| Block SD Card | SD and microSD card readers (L8) |
+| Block Bluetooth File XFR | Bluetooth OBEX/RFCOMM file transfer (L9) |
+| Block FireWire / 1394 | FireWire / IEEE 1394 DMA-capable ports (L10) |
 
 ---
 
@@ -102,7 +172,7 @@ Tamper detection runs a background scheduled task every 5 minutes. If a local ad
 
 1. In the GUI, scroll to the **Master Control** section
 2. Click **Enable** next to Tamper Detection
-3. The `Tamper Detect` status card at the top should turn green
+3. The `Tamper Det.` status card at the top should change to ACTIVE
 
 > **Note:** Tamper detection re-applies the three most critical values (USBSTOR Start, WriteProtect, WpdFilesystemDriver Start). For full ACL-level tamper protection that even blocks local admins in regedit, use the BigFix package instead.
 
@@ -110,25 +180,30 @@ Tamper detection runs a background scheduled task every 5 minutes. If a local ad
 
 ## Step 6 — Verify the Status
 
-After applying the block, the status bar should show all cards green (BLOCKED). Check each one:
+After applying the block, the status bar should show all cards as BLOCKED/ACTIVE. Check each one:
 
 | Card | Should show |
 |------|-------------|
 | USB Storage | BLOCKED |
-| Write Protect | BLOCKED |
-| AutoPlay | BLOCKED |
-| Volume Watcher | RUNNING |
+| Write Block | ACTIVE |
+| AutoPlay | KILLED |
+| Watcher | RUNNING |
 | Phones/MTP | BLOCKED |
 | Printers | BLOCKED |
-| Tamper Detect | RUNNING |
+| SD Card | BLOCKED |
+| BT File XFR | BLOCKED |
+| FireWire | BLOCKED |
+| Tamper Det. | ACTIVE |
 
-If any card is not green, click the corresponding **Block** button for that category.
+If any card shows UNKNOWN or ALLOWED, click the corresponding **Block** button for that category.
+
+> **Note:** Hardware-dependent layers (Thunderbolt L6, FireWire L10, SD Card L8) may show UNKNOWN if the corresponding driver service key does not exist on this machine. This is normal — the hardware is simply not present.
 
 ---
 
 ## Step 7 — Generate a Compliance Report (Optional)
 
-To produce a timestamped HTML report showing the status of all 7 layers:
+To produce a timestamped HTML report showing the status of all 10 layers:
 
 ```powershell
 .\USBGuard_ComplianceReport.ps1
@@ -152,7 +227,7 @@ To see the summary in the console without saving an HTML file:
 .\USBGuard.ps1 -Action status
 ```
 
-Returns a JSON summary of all layers. Useful for scripting or automated checks.
+Returns a JSON summary of all 10 layers. Useful for scripting or automated checks.
 
 ### View allowlisted devices
 
@@ -191,9 +266,9 @@ To temporarily allow a user to use USB storage on this machine:
 1. Open the GUI (`Launch_USBGuard.bat`)
 2. Click **Allow All** in the Master Control section
 3. The user can now use their USB device
-4. When done, click **Block All** to re-apply all layers
+4. When done, click **Block All** to re-apply all 10 layers
 
-> If tamper detection is enabled, it will still run every 5 minutes. You can disable it temporarily via the GUI (**Disable** button next to Tamper Detection) and re-enable it after re-blocking.
+> If tamper detection is enabled, disable it temporarily via the GUI before unblocking, then re-enable it after re-blocking.
 
 ---
 
@@ -221,21 +296,27 @@ All commands must be run in PowerShell **as Administrator**.
 
 ```powershell
 # ── Status & Reporting ────────────────────────────────────────────
-.\USBGuard.ps1 -Action status                    # JSON status of all 7 layers
+.\USBGuard.ps1 -Action status                    # JSON status of all 10 layers
 .\USBGuard_ComplianceReport.ps1                  # HTML compliance report
 .\USBGuard_ComplianceReport.ps1 -NoHtml          # Console summary only
 .\USBGuard_Advanced.ps1 -Action list-devices     # Show connected USB devices
 .\USBGuard_Advanced.ps1 -Action export-policy    # Export current policy to JSON
 
 # ── Block / Unblock ───────────────────────────────────────────────
-.\USBGuard.ps1 -Action block                     # All 7 layers on
-.\USBGuard.ps1 -Action unblock                   # All 7 layers off
+.\USBGuard.ps1 -Action block                     # All 10 layers on
+.\USBGuard.ps1 -Action unblock                   # All 10 layers off
 .\USBGuard.ps1 -Action block-storage             # L1-L6 (drives only)
 .\USBGuard.ps1 -Action unblock-storage
 .\USBGuard.ps1 -Action block-phones              # L7 (Android/iPhone/cameras)
 .\USBGuard.ps1 -Action unblock-phones
 .\USBGuard.ps1 -Action block-printers            # L3 printer GUID
 .\USBGuard.ps1 -Action unblock-printers
+.\USBGuard.ps1 -Action block-sdcard              # L8 (sdbus — SD/microSD readers)
+.\USBGuard.ps1 -Action unblock-sdcard
+.\USBGuard.ps1 -Action block-bluetooth           # L9 (BthOBEX/RFCOMM file transfer)
+.\USBGuard.ps1 -Action unblock-bluetooth
+.\USBGuard.ps1 -Action block-firewire            # L10 (1394ohci — FireWire/IEEE 1394)
+.\USBGuard.ps1 -Action unblock-firewire
 
 # ── Volume Watcher (L5) ───────────────────────────────────────────
 .\USBGuard.ps1 -Action install-watcher           # Install background eject task
@@ -272,7 +353,7 @@ When a blocked USB storage device is plugged in while the Volume Watcher is runn
 4. The drive is force-dismounted (within ~1 second of mount)
 5. No AutoPlay window appears (ShellHWDetection is stopped by L4)
 
-**Phones and cameras (L7):** These are blocked silently at the driver level. The WPD stack never loads, so the device never appears as accessible storage. No volume event fires, so no toast is shown. The phone just shows "Charging" or "USB connected" on its screen.
+**Phones and cameras (L7):** Blocked silently at the driver level. The WPD stack never loads, so the device never appears as accessible storage. No volume event fires, so no toast is shown. The phone just shows "Charging" on its screen.
 
 ---
 
@@ -282,7 +363,7 @@ When a blocked USB storage device is plugged in while the Volume Watcher is runn
 - The script requires Administrator. Run PowerShell as Administrator, or use `Launch_USBGuard.bat` which handles UAC elevation automatically.
 
 **Status card shows UNKNOWN after blocking**
-- Some layers depend on hardware that may not be present (e.g. Thunderbolt). UNKNOWN on Thunderbolt means the service key does not exist on this hardware — this is normal.
+- Some layers depend on hardware that may not be present (e.g. Thunderbolt, FireWire, SD reader). UNKNOWN means the driver service key does not exist on this machine — this is normal.
 - For other layers, click the Block button for that category to re-apply.
 
 **Volume Watcher shows UNKNOWN instead of RUNNING**
@@ -295,9 +376,15 @@ When a blocked USB storage device is plugged in while the Volume Watcher is runn
 - The Volume Watcher task must be installed and running. Check the Watcher status card in the GUI.
 - The user must be logged in to a desktop session (toasts cannot be shown to non-interactive sessions).
 
-**HTA GUI does not open**
+**WebView2 GUI does not open / blank window**
+- Verify the WebView2 Runtime is installed: `reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" /v pv`
+- If missing, install the [Evergreen Bootstrapper](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) or deploy via management tool.
+- Check `%LocalAppData%\USBGuard\WebView2Cache\` for crash logs.
+- If WebView2 is unavailable, delete or rename `USBGuard-WebView2\USBGuard.exe` — the launcher will fall back to the HTA automatically.
+
+**HTA GUI does not open (legacy fallback)**
 - Try running `mshta.exe USBGuard.hta` from an elevated command prompt.
-- Ensure MSHTML / Internet Explorer components are not disabled via Group Policy.
+- Ensure MSHTML / Internet Explorer components are not disabled via Group Policy or AppLocker (`mshta.exe` is a common LOLBin block target).
 
 ---
 

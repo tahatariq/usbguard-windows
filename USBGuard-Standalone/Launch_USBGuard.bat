@@ -11,6 +11,11 @@ powershell -Command "Start-Process '%~f0' -Verb RunAs"
 exit /b
 
 :RUN_APP
-:: Set execution policy for this session and launch HTA
 cd /d "%~dp0"
-mshta.exe "%~dp0USBGuard.hta"
+
+:: Prefer WebView2 (Chromium) host if built; fall back to legacy HTA (MSHTML)
+if exist "%~dp0USBGuard-WebView2\USBGuard.exe" (
+    start "" "%~dp0USBGuard-WebView2\USBGuard.exe"
+) else (
+    mshta.exe "%~dp0USBGuard.hta"
+)
