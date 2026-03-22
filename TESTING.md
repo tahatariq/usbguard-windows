@@ -184,6 +184,13 @@ Automatic validation runs on:
 - Generates summary report
 ```
 
+#### 7. WebView2 Tests (`webview2-tests` job)
+```yaml
+- C# xUnit: builds USBGuard-Standalone/USBGuard-WebView2/tests/USBGuard.Tests.csproj
+- JS Jest:  runs USBGuard-Standalone/USBGuard-WebView2/tests/app.test.js
+- Publishes test-results-webview2-xunit.xml and test-results-webview2-jest.xml
+```
+
 ### Viewing Results
 
 **In GitHub UI:**
@@ -286,6 +293,8 @@ $exported = $mock.Export()
 | Service operations | ⚠️ Partial | Service existence varies by system |
 | HTA GUI interactions | ❌ None | Requires manual browser testing |
 | Notification toasts | ❌ None | Platform-specific, manual testing |
+| WebView2 C# xUnit | ✅ Input validation | `USBGuard-WebView2/tests/InputValidatorTests.cs` |
+| WebView2 JS Jest | ✅ `extractStatusJson` regex | `USBGuard-WebView2/tests/app.test.js` |
 
 ---
 
@@ -380,6 +389,12 @@ Check action logs:
 2. Click workflow run
 3. Expand failed job
 4. Review detailed output
+
+#### WebView2 Tests (`webview2-tests` job)
+- Use `npm install`, not `npm ci` — no `package-lock.json` is committed
+- Do NOT pipe jest through `2>&1 | Tee-Object` in PowerShell — it masks jest's real exit code; run jest directly
+- If `dotnet test` fails with RID mismatch: `RuntimeIdentifier` must be publish-only in `USBGuard.csproj` (conditional `PropertyGroup`); setting it unconditionally breaks the test project's `ProjectReference`
+- If C# build fails with `CS0246 Xunit not found`: check that `<Compile Remove="tests\**" />` entries are present in `USBGuard.csproj` — SDK-style projects auto-include all `**/*.cs` under the project dir
 
 ---
 
