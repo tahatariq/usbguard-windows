@@ -345,6 +345,33 @@ All three should run before the Baseline is activated. Fixlet 3 must follow Fixl
 
 ---
 
+## CI Gotchas & Known Quirks
+
+### PSScriptAnalyzer (`code-analysis` job)
+Six rules are intentionally excluded — see comments in `pester-tests.yml`. Do NOT remove exclusions:
+- `PSUseApprovedVerbs` — internal helpers (`Ensure-*`, `Eject-*`, `Block-*`)
+- `PSAvoidUsingWriteHost` — `Write-Host` is the stdout capture mechanism for HTA/WebView2
+- `PSAvoidUsingWMICmdlet` — `Win32_Volume.Dismount()` requires WMI objects; can't swap to CIM
+- `PSUseShouldProcessForStateChangingFunctions` — internal helpers, not pipeline cmdlets
+- `PSUseSingularNouns` — established function names
+- `PSUseBOMForUnicodeEncodedFile` — UTF-8 no-BOM is intentional (PS 5.1 default)
+
+Empty catch blocks must have at least one statement: use `$null = $_` with a comment explaining intent.
+
+### WebView2 C# project (`USBGuard.csproj`)
+- SDK-style projects auto-include all `**/*.cs` under the project dir — `tests\**` is excluded via `<Compile Remove>` entries in the csproj. Don't remove them.
+- `RuntimeIdentifier` is publish-only (conditional `PropertyGroup`). Setting it unconditionally breaks `dotnet test` because the test project has no RID.
+- MSB3277 (WebView2 WPF DLL conflict) is suppressed with `<NoWarn>MSB3277</NoWarn>` — benign, WinForms picks the correct version automatically.
+
+### JS Jest CI step
+- No `package-lock.json` is committed — use `npm install`, not `npm ci`.
+- Never pipe jest through `2>&1 | Tee-Object` in PowerShell — it masks the real exit code. Run jest directly; GitHub Actions captures exit code natively.
+
+### `extractStatusJson` regex
+Uses non-greedy `/\{[\s\S]*?\}/` — the greedy version swallows multiple JSON objects in one string and returns null.
+
+---
+
 ## Requirements
 
 - **Windows 10 21H2+ or Windows 11**
