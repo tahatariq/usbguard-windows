@@ -317,7 +317,7 @@ jobs:
         shell: powershell
         run: |
           cd USBGuard-Standalone/USBGuard-WebView2/tests
-          npm ci
+          npm install
           # Jest outputs to stdout; convert to JUnit for publish step
           npx jest --reporters=default --reporters=jest-junit `
             --testResultsProcessor=jest-junit 2>&1 | Tee-Object -Variable jestOutput
